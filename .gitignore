@@ -1,0 +1,24 @@
+# OS and editor
+.DS_Store
+.vscode/
+.idea/
+
+# Node and Expo artifacts under driver-app
+/driver-app/node_modules/
+/driver-app/.expo/
+/driver-app/dist/
+/driver-app/web-build/
+/driver-app/.metro-health-check*
+
+# Generated native folders
+/driver-app/ios/
+/driver-app/android/
+
+# Build and cache
+/driver-app/*.tsbuildinfo
+/driver-app/coverage/
+
+# Local env files
+/driver-app/.env
+/driver-app/.env.*
+!/driver-app/.env.example
