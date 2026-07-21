@@ -7,7 +7,13 @@ export interface SyncStatus {
   isStale: boolean;
 }
 
-type SyncStrings = typeof localizedStrings.fr.sync;
+type SyncStrings = {
+  unavailable: string;
+  now: string;
+  minutesAgo: (minutes: number) => string;
+  hoursAgo: (hours: number) => string;
+  staleDays: (days: number) => string;
+};
 
 export function getSyncStatus(
   lastSuccessfulSync: string | null,
