@@ -27,6 +27,7 @@ import {
   savePendingActions,
   saveSession,
 } from '../lib/session';
+import { strings } from '../i18n/strings';
 import { trackDriverEvent } from '../lib/telemetry';
 import type { DriverDeliveryDto, PendingAction, PendingActionType, StoredSession } from '../types/api';
 import {
@@ -80,7 +81,7 @@ export function useDriverApp() {
     const { status } = await Location.requestForegroundPermissionsAsync();
 
     if (status !== 'granted') {
-      setBannerMessage('Partage de localisation desactive: permission non accordee.');
+      setBannerMessage(strings.hook.locationPermissionDenied);
       void trackDriverEvent('location_permission_denied');
       return;
     }
@@ -137,7 +138,7 @@ export function useDriverApp() {
       setLastSuccessfulSync(null);
       setScreen('login');
       setBannerMessage(null);
-      setErrorMessage('Votre session a expire. Veuillez vous reconnecter.');
+      setErrorMessage(strings.hook.sessionExpired);
       await clearSession();
       await clearPendingActions();
       await clearDeliveryCache();
@@ -175,7 +176,7 @@ export function useDriverApp() {
         });
       } catch {
         void trackDriverEvent('session_restore_failed');
-        setErrorMessage('Impossible de restaurer la session enregistree.');
+        setErrorMessage(strings.hook.restoreSessionFailed);
       } finally {
         setIsRestoring(false);
       }
@@ -244,13 +245,13 @@ export function useDriverApp() {
         if (cachedDeliveries) {
           setDeliveries(cachedDeliveries.deliveries);
           setLastSuccessfulSync(cachedDeliveries.lastSuccessfulSync);
-          setBannerMessage('Mode hors ligne: affichage des livraisons en cache.');
+          setBannerMessage(strings.hook.offlineCacheMode);
           setErrorMessage(null);
           void trackDriverEvent('deliveries_refresh_offline_cache', {
             cachedDeliveryCount: cachedDeliveries.deliveries.length,
           });
         } else {
-          setErrorMessage('Connexion indisponible et aucun cache local disponible.');
+          setErrorMessage(strings.hook.noNetworkAndNoCache);
           void trackDriverEvent('deliveries_refresh_failed', {
             reason: 'network_unavailable_no_cache',
           });
@@ -296,7 +297,7 @@ export function useDriverApp() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      setErrorMessage('Email et mot de passe sont requis.');
+      setErrorMessage(strings.hook.loginRequiredFields);
       return;
     }
 
@@ -312,7 +313,7 @@ export function useDriverApp() {
       const nextSession = await login({ email: email.trim(), password });
 
       if (nextSession.role !== 'DRIVER') {
-        throw new Error('Ce compte ne dispose pas du role chauffeur.');
+        throw new Error(strings.hook.roleNotDriver);
       }
 
       setAuthToken(nextSession.token);
@@ -434,9 +435,9 @@ export function useDriverApp() {
           });
 
           if ((action.retryCount + 1) >= 5) {
-            setBannerMessage(`L action en attente pour la livraison #${action.deliveryId} a atteint la limite de relecture automatique.`);
+            setBannerMessage(strings.hook.queueReplayMaxReached(action.deliveryId));
           } else {
-            setBannerMessage(`Relecture differee pour la livraison #${action.deliveryId} apres une erreur reseau.`);
+            setBannerMessage(strings.hook.queueReplayDeferredByNetwork(action.deliveryId));
           }
 
           return;
@@ -453,7 +454,7 @@ export function useDriverApp() {
           deliveryId: action.deliveryId,
           reason: getApiErrorMessage(error),
         });
-        setBannerMessage(`Action en attente en conflit pour la livraison #${action.deliveryId}. Une action manuelle est requise.`);
+        setBannerMessage(strings.hook.queueReplayConflict(action.deliveryId));
       }
     }
 
@@ -463,7 +464,7 @@ export function useDriverApp() {
       void trackDriverEvent('queue_replay_deferred', {
         deferredReplayCount,
       });
-      setBannerMessage(`${deferredReplayCount} action(s) en attente patienteront avant la prochaine relecture automatique.`);
+      setBannerMessage(strings.hook.queueReplayDeferredCount(deferredReplayCount));
     }
   };
 
@@ -481,7 +482,7 @@ export function useDriverApp() {
   const discardBlockedQueuedActions = async () => {
     const nextQueue = discardBlockedActions(pendingActions);
     await persistPendingQueue(nextQueue);
-    setBannerMessage('Actions bloquees supprimees de la file locale.');
+    setBannerMessage(strings.hook.blockedActionsRemoved);
   };
 
   const retryBlockedAction = async (actionId: string) => {
@@ -492,14 +493,14 @@ export function useDriverApp() {
     ));
 
     await persistPendingQueue(nextQueue);
-    setBannerMessage('Action en echec reprogramme pour une nouvelle tentative.');
+    setBannerMessage(strings.hook.blockedActionRescheduled);
     await refreshDeliveries();
   };
 
   const discardBlockedAction = async (actionId: string) => {
     const nextQueue = pendingActions.filter((action) => action.actionId !== actionId);
     await persistPendingQueue(nextQueue);
-    setBannerMessage('Action locale supprimee. L etat serveur reste prioritaire.');
+    setBannerMessage(strings.hook.blockedActionRemoved);
     await refreshDeliveries();
   };
 
@@ -515,7 +516,7 @@ export function useDriverApp() {
       actionType,
       deliveryId,
     });
-    setBannerMessage('Action hors ligne enregistree. Elle sera rejouee des le retour du reseau.');
+    setBannerMessage(strings.hook.offlineActionQueued);
   };
 
   const runDeliveryAction = async (
@@ -568,12 +569,12 @@ export function useDriverApp() {
     const reason = (failureDrafts[deliveryId] ?? '').trim();
 
     if (!reason) {
-      setErrorMessage('Veuillez saisir une raison d echec avant l envoi.');
+      setErrorMessage(strings.hook.failReasonRequired);
       return;
     }
 
     if (reason.length > 180) {
-      setErrorMessage('La raison d echec doit contenir au maximum 180 caracteres.');
+      setErrorMessage(strings.hook.failReasonTooLong);
       return;
     }
 
@@ -581,7 +582,7 @@ export function useDriverApp() {
       deliveryId,
       'FAIL',
       () => failDelivery(deliveryId, reason),
-      'La livraison a ete marquee en echec.',
+      strings.hook.failSuccess,
       'CANCELLED',
       { reason }
     );
@@ -590,9 +591,9 @@ export function useDriverApp() {
   };
 
   const actionHandlers = {
-    pickup: (deliveryId: number) => runDeliveryAction(deliveryId, 'PICKUP', () => pickupDelivery(deliveryId), 'Commande recuperee.', 'PICKED_UP'),
-    start: (deliveryId: number) => runDeliveryAction(deliveryId, 'START', () => startDelivery(deliveryId), 'Livraison demarree.', 'IN_TRANSIT'),
-    complete: (deliveryId: number) => runDeliveryAction(deliveryId, 'COMPLETE', () => completeDelivery(deliveryId), 'Livraison terminee.', 'DELIVERED'),
+    pickup: (deliveryId: number) => runDeliveryAction(deliveryId, 'PICKUP', () => pickupDelivery(deliveryId), strings.hook.pickupSuccess, 'PICKED_UP'),
+    start: (deliveryId: number) => runDeliveryAction(deliveryId, 'START', () => startDelivery(deliveryId), strings.hook.startSuccess, 'IN_TRANSIT'),
+    complete: (deliveryId: number) => runDeliveryAction(deliveryId, 'COMPLETE', () => completeDelivery(deliveryId), strings.hook.completeSuccess, 'DELIVERED'),
   };
 
   return {

@@ -1,5 +1,6 @@
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { getSyncStatus } from '../app/syncStatus';
+import { strings } from '../i18n/strings';
 import type { DriverDeliveryDto, PendingAction, StoredSession } from '../types/api';
 import { palette, statusBadgeColors } from '../theme/palette';
 
@@ -46,9 +47,9 @@ export function DeliveryListScreen({
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={palette.primary} />}
     >
       <View style={styles.headerCard}>
-        <Text style={styles.eyebrow}>Session active</Text>
-        <Text style={styles.title}>Bonjour {session.email}</Text>
-        <Text style={styles.subtitle}>Role detecte: {session.role}</Text>
+        <Text style={styles.eyebrow}>{strings.list.activeSession}</Text>
+        <Text style={styles.title}>{strings.list.hello(session.email)}</Text>
+        <Text style={styles.subtitle}>{strings.list.detectedRole(session.role)}</Text>
         {syncStatus ? (
           <Text style={[styles.syncText, syncStatus.isStale && styles.syncTextStale]}>{syncStatus.label}</Text>
         ) : null}
@@ -60,29 +61,29 @@ export function DeliveryListScreen({
             disabled={isRefreshing}
             onPress={onRefresh}
           >
-            <Text style={styles.secondaryButtonText}>{isRefreshing ? 'Actualisation...' : 'Actualiser'}</Text>
+            <Text style={styles.secondaryButtonText}>{isRefreshing ? strings.list.refreshing : strings.list.refresh}</Text>
           </Pressable>
           <Pressable style={styles.ghostButton} onPress={onLogout}>
-            <Text style={styles.ghostButtonText}>Deconnexion</Text>
+            <Text style={styles.ghostButtonText}>{strings.list.logout}</Text>
           </Pressable>
         </View>
         <View style={styles.headerActions}>
           <Pressable style={styles.secondaryButton} onPress={onRetryQueuedActions}>
-            <Text style={styles.secondaryButtonText}>Rejouer la file</Text>
+            <Text style={styles.secondaryButtonText}>{strings.list.replayQueue}</Text>
           </Pressable>
           <Pressable style={styles.ghostButton} onPress={onDiscardBlockedActions}>
-            <Text style={styles.ghostButtonText}>Supprimer les conflits ({blockedActionCount})</Text>
+            <Text style={styles.ghostButtonText}>{strings.list.removeConflicts(blockedActionCount)}</Text>
           </Pressable>
         </View>
       </View>
 
       {blockedActionCount > 0 ? (
         <View style={styles.warningCard}>
-          <Text style={styles.warningTitle}>Actions en attente bloquees</Text>
+          <Text style={styles.warningTitle}>{strings.list.blockedActionsTitle}</Text>
           <Text style={styles.warningText}>
-            {blockedActionCount} action(s) exigent une revue manuelle avant la prochaine synchro automatique.
+            {strings.list.blockedActionsText(blockedActionCount)}
           </Text>
-          <Text style={styles.warningMeta}>Conflits: {conflictedCount} | Echecs reseau: {failedCount}</Text>
+          <Text style={styles.warningMeta}>{strings.list.blockedActionsMeta(conflictedCount, failedCount)}</Text>
         </View>
       ) : null}
 
@@ -95,8 +96,8 @@ export function DeliveryListScreen({
 
       {deliveries.length === 0 && !isRefreshing ? (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Aucune livraison assignee</Text>
-          <Text style={styles.emptyText}>Les livraisons du chauffeur apparaitront ici via l API reelle.</Text>
+          <Text style={styles.emptyTitle}>{strings.list.noDeliveriesTitle}</Text>
+          <Text style={styles.emptyText}>{strings.list.noDeliveriesText}</Text>
         </View>
       ) : null}
 
@@ -112,28 +113,28 @@ export function DeliveryListScreen({
           onPress={() => onOpenDelivery(delivery.id)}
         >
           <View style={styles.deliveryHeader}>
-            <Text style={styles.deliveryTitle}>Livraison #{delivery.id}</Text>
+            <Text style={styles.deliveryTitle}>{strings.list.deliveryTitle(delivery.id)}</Text>
             <Text style={[styles.statusBadge, statusBadgeColors[delivery.status]]}>{delivery.status}</Text>
           </View>
-          <Text style={styles.deliveryMeta}>Retrait: {delivery.pickupAddress}</Text>
-          <Text style={styles.deliveryMeta}>Destination: {delivery.deliveryAddress}</Text>
-          {delivery.restaurant?.name ? <Text style={styles.deliveryMeta}>Restaurant: {delivery.restaurant.name}</Text> : null}
+          <Text style={styles.deliveryMeta}>{strings.list.pickup(delivery.pickupAddress)}</Text>
+          <Text style={styles.deliveryMeta}>{strings.list.destination(delivery.deliveryAddress)}</Text>
+          {delivery.restaurant?.name ? <Text style={styles.deliveryMeta}>{strings.list.restaurant(delivery.restaurant.name)}</Text> : null}
           {pendingActionCountByDelivery[delivery.id] ? (
-            <Text style={styles.pendingText}>Action en attente: {pendingActionCountByDelivery[delivery.id]}</Text>
+            <Text style={styles.pendingText}>{strings.list.pendingAction(pendingActionCountByDelivery[delivery.id])}</Text>
           ) : null}
           {blockedAction ? (
             <View style={[styles.recoveryCard, blockedAction.state === 'conflicted' ? styles.conflictCard : styles.failedCard]}>
               <Text style={styles.recoveryTitle}>
-                {blockedAction.state === 'conflicted' ? 'Conflit detecte' : 'Reprise manuelle requise'}
+                {blockedAction.state === 'conflicted' ? strings.list.conflictDetected : strings.list.recoveryRequired}
               </Text>
               <Text style={styles.recoveryText}>
                 {blockedAction.state === 'conflicted'
-                  ? 'L etat du serveur ne correspond plus a l action locale. Ouvrez le detail pour actualiser puis supprimer l action obsolete.'
-                  : 'La derniere tentative a echoue apres plusieurs reprises. Ouvrez le detail pour reprogrammer ou supprimer cette action.'}
+                  ? strings.list.conflictText
+                  : strings.list.failedReplayText}
               </Text>
             </View>
           ) : null}
-          <Text style={styles.linkText}>Ouvrir le detail</Text>
+          <Text style={styles.linkText}>{strings.list.openDetail}</Text>
         </Pressable>
           );
         })()

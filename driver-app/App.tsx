@@ -4,6 +4,7 @@ import { useDriverApp } from './src/app/useDriverApp';
 import { DeliveryDetailScreen } from './src/screens/DeliveryDetailScreen';
 import { DeliveryListScreen } from './src/screens/DeliveryListScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
+import { strings } from './src/i18n/strings';
 import { palette } from './src/theme/palette';
 
 export function App() {
@@ -13,7 +14,7 @@ export function App() {
     return (
       <SafeAreaView style={styles.centeredScreen}>
         <ActivityIndicator size="large" color={palette.primary} />
-        <Text style={styles.helperText}>Restauration de la session...</Text>
+        <Text style={styles.helperText}>{strings.app.restoringSession}</Text>
         <StatusBar style="dark" />
       </SafeAreaView>
     );

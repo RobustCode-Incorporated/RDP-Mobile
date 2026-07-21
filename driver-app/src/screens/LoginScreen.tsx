@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { strings } from '../i18n/strings';
 import { palette } from '../theme/palette';
 
 interface LoginScreenProps {
@@ -22,21 +23,21 @@ export function LoginScreen({
 }: LoginScreenProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.eyebrow}>Driver mobile</Text>
-      <Text style={styles.title}>Connexion chauffeur</Text>
-      <Text style={styles.subtitle}>Authentifiez-vous avec votre compte backend.</Text>
+      <Text style={styles.eyebrow}>{strings.login.eyebrow}</Text>
+      <Text style={styles.title}>{strings.login.title}</Text>
+      <Text style={styles.subtitle}>{strings.login.subtitle}</Text>
 
       <TextInput
         autoCapitalize="none"
         keyboardType="email-address"
-        placeholder="Email"
+        placeholder={strings.login.emailPlaceholder}
         placeholderTextColor="#64748b"
         style={styles.input}
         value={email}
         onChangeText={onEmailChange}
       />
       <TextInput
-        placeholder="Mot de passe"
+        placeholder={strings.login.passwordPlaceholder}
         placeholderTextColor="#64748b"
         secureTextEntry
         style={styles.input}
@@ -52,7 +53,7 @@ export function LoginScreen({
         disabled={isSubmitting}
         onPress={onSubmit}
       >
-        <Text style={styles.primaryButtonText}>{isSubmitting ? 'Connexion...' : 'Se connecter'}</Text>
+        <Text style={styles.primaryButtonText}>{isSubmitting ? strings.login.submitting : strings.login.submit}</Text>
       </Pressable>
     </View>
   );

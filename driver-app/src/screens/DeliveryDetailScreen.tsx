@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { strings } from '../i18n/strings';
 import type { DriverDeliveryDto, PendingAction } from '../types/api';
 import { palette, statusBadgeColors } from '../theme/palette';
 
@@ -17,12 +18,7 @@ type RouteSummary = {
   refreshedAt: string;
 };
 
-const quickFailureReasons = [
-  'Client absent',
-  'Adresse introuvable',
-  'Restaurant ferme',
-  'Incident vehicule',
-];
+const quickFailureReasons = strings.detail.quickFailureReasons;
 
 interface DeliveryDetailScreenProps {
   delivery: DriverDeliveryDto;
@@ -251,7 +247,7 @@ export function DeliveryDetailScreen({
         }
       } catch {
         if (isMounted) {
-          setRoutingError('ETA live indisponible. Estimation locale affichee.');
+          setRoutingError(strings.detail.routingFallbackError);
           setRouteSummary(null);
         }
       } finally {
@@ -336,46 +332,46 @@ export function DeliveryDetailScreen({
   return (
     <ScrollView contentContainerStyle={styles.contentContainer}>
       <Pressable accessibilityRole="button" style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>Retour aux livraisons</Text>
+        <Text style={styles.backButtonText}>{strings.detail.back}</Text>
       </Pressable>
 
       <View style={styles.detailCard}>
-        <Text style={styles.eyebrow}>Detail livraison</Text>
+        <Text style={styles.eyebrow}>{strings.detail.title}</Text>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Livraison #{delivery.id}</Text>
+          <Text style={styles.title}>{strings.detail.deliveryTitle(delivery.id)}</Text>
           <Text style={[styles.statusBadge, statusBadgeColors[delivery.status]]}>{delivery.status}</Text>
         </View>
 
-        <Text style={styles.metaLine}>Retrait: {delivery.pickupAddress}</Text>
-        <Text style={styles.metaLine}>Destination: {delivery.deliveryAddress}</Text>
-        {delivery.restaurant?.name ? <Text style={styles.metaLine}>Restaurant: {delivery.restaurant.name}</Text> : null}
-        {delivery.restaurant?.address ? <Text style={styles.metaLine}>Adresse restaurant: {delivery.restaurant.address}</Text> : null}
-        {delivery.customer?.email ? <Text style={styles.metaLine}>Client: {delivery.customer.email}</Text> : null}
-        {delivery.description ? <Text style={styles.metaLine}>Notes: {delivery.description}</Text> : null}
-        <Text style={styles.metaLine}>Creee: {delivery.createdAt}</Text>
-        {delivery.updatedAt ? <Text style={styles.metaLine}>Mise a jour: {delivery.updatedAt}</Text> : null}
-        {pendingActionCount ? <Text style={styles.pendingText}>Actions en attente: {pendingActionCount}</Text> : null}
+        <Text style={styles.metaLine}>{strings.detail.pickup(delivery.pickupAddress)}</Text>
+        <Text style={styles.metaLine}>{strings.detail.destination(delivery.deliveryAddress)}</Text>
+        {delivery.restaurant?.name ? <Text style={styles.metaLine}>{strings.detail.restaurant(delivery.restaurant.name)}</Text> : null}
+        {delivery.restaurant?.address ? <Text style={styles.metaLine}>{strings.detail.restaurantAddress(delivery.restaurant.address)}</Text> : null}
+        {delivery.customer?.email ? <Text style={styles.metaLine}>{strings.detail.customer(delivery.customer.email)}</Text> : null}
+        {delivery.description ? <Text style={styles.metaLine}>{strings.detail.notes(delivery.description)}</Text> : null}
+        <Text style={styles.metaLine}>{strings.detail.createdAt(delivery.createdAt)}</Text>
+        {delivery.updatedAt ? <Text style={styles.metaLine}>{strings.detail.updatedAt(delivery.updatedAt)}</Text> : null}
+        {pendingActionCount ? <Text style={styles.pendingText}>{strings.detail.pendingActions(pendingActionCount)}</Text> : null}
       </View>
 
       <View style={styles.mapCard}>
-        <Text style={styles.mapTitle}>Carte et navigation</Text>
-        {isGeocoding ? <Text style={styles.mapHint}>Geocodage des adresses en cours...</Text> : null}
-        {!mapRegion ? <Text style={styles.mapHint}>Coordonnees indisponibles pour afficher la carte.</Text> : null}
+        <Text style={styles.mapTitle}>{strings.detail.mapTitle}</Text>
+        {isGeocoding ? <Text style={styles.mapHint}>{strings.detail.geocoding}</Text> : null}
+        {!mapRegion ? <Text style={styles.mapHint}>{strings.detail.noMapCoordinates}</Text> : null}
 
         {mapRegion ? (
           <MapView style={styles.mapView} initialRegion={mapRegion} region={mapRegion}>
             {currentLocation ? (
               <Marker
                 coordinate={currentLocation}
-                title="Position chauffeur"
-                description="Position live"
+                  title={strings.detail.markerDriverTitle}
+                  description={strings.detail.markerDriverDescription}
                 pinColor="#2563EB"
               />
             ) : null}
             {pickupCoordinates ? (
               <Marker
                 coordinate={pickupCoordinates}
-                title="Point de retrait"
+                title={strings.detail.markerPickupTitle}
                 description={delivery.pickupAddress}
                 pinColor="#D97706"
               />
@@ -383,7 +379,7 @@ export function DeliveryDetailScreen({
             {destinationCoordinates ? (
               <Marker
                 coordinate={destinationCoordinates}
-                title="Destination"
+                title={strings.detail.markerDestinationTitle}
                 description={delivery.deliveryAddress}
                 pinColor="#059669"
               />
@@ -412,20 +408,19 @@ export function DeliveryDetailScreen({
           </MapView>
         ) : null}
 
-        {isRouting ? <Text style={styles.mapHint}>Calcul ETA live en cours...</Text> : null}
+        {isRouting ? <Text style={styles.mapHint}>{strings.detail.routingLoading}</Text> : null}
         {routingError ? <Text style={styles.errorText}>{routingError}</Text> : null}
 
         {distanceToTargetKm !== null ? (
           <Text style={styles.mapMetric}>
-            Distance {routeSummary ? 'itinerariee' : 'approx.'}: {distanceToTargetKm.toFixed(1)} km
-            {estimatedEtaMinutes !== null ? ` (ETA ~ ${estimatedEtaMinutes} min)` : ''}
+            {strings.detail.distanceLabel(Boolean(routeSummary), distanceToTargetKm, estimatedEtaMinutes)}
           </Text>
         ) : (
-          <Text style={styles.mapHint}>ETA indisponible tant que la position live ou la prochaine etape manque.</Text>
+          <Text style={styles.mapHint}>{strings.detail.etaUnavailable}</Text>
         )}
 
         {routeSummary?.refreshedAt ? (
-          <Text style={styles.mapHint}>Derniere mise a jour ETA: {new Date(routeSummary.refreshedAt).toLocaleTimeString()}</Text>
+          <Text style={styles.mapHint}>{strings.detail.lastEtaRefresh(new Date(routeSummary.refreshedAt).toLocaleTimeString())}</Text>
         ) : null}
 
         <View style={styles.mapActions}>
@@ -434,14 +429,14 @@ export function DeliveryDetailScreen({
             disabled={!pickupCoordinates}
             onPress={() => void openDirections(pickupCoordinates)}
           >
-            <Text style={styles.ghostButtonText}>Itineraire vers retrait</Text>
+            <Text style={styles.ghostButtonText}>{strings.detail.routeToPickup}</Text>
           </Pressable>
           <Pressable
             style={[styles.ghostButton, !destinationCoordinates && styles.buttonDisabled]}
             disabled={!destinationCoordinates}
             onPress={() => void openDirections(destinationCoordinates)}
           >
-            <Text style={styles.ghostButtonText}>Itineraire vers destination</Text>
+            <Text style={styles.ghostButtonText}>{strings.detail.routeToDestination}</Text>
           </Pressable>
         </View>
       </View>
@@ -452,26 +447,26 @@ export function DeliveryDetailScreen({
       {blockedAction ? (
         <View style={[styles.recoveryPanel, isBlockedByConflict ? styles.recoveryConflict : styles.recoveryFailure]}>
           <Text style={styles.recoveryPanelTitle}>
-            {isBlockedByConflict ? 'Conflit entre file locale et serveur' : 'Action en attente en echec'}
+            {isBlockedByConflict ? strings.detail.recoveryConflictTitle : strings.detail.recoveryFailedTitle}
           </Text>
           <Text style={styles.recoveryPanelText}>
             {isBlockedByConflict
-              ? 'Le serveur a change d etat avant la relecture. Actualisez d abord la livraison puis supprimez l action locale obsolete.'
-              : 'La reprise automatique a atteint sa limite. Vous pouvez reprogrammer l action ou la supprimer apres verification.'}
+              ? strings.detail.recoveryConflictText
+              : strings.detail.recoveryFailedText}
           </Text>
-          {blockedAction.lastError ? <Text style={styles.recoveryError}>Derniere erreur: {blockedAction.lastError}</Text> : null}
+          {blockedAction.lastError ? <Text style={styles.recoveryError}>{strings.detail.recoveryLastError(blockedAction.lastError)}</Text> : null}
 
           <View style={styles.recoveryActions}>
             <Pressable style={styles.ghostButton} onPress={onRefreshServerState}>
-              <Text style={styles.ghostButtonText}>Actualiser l etat serveur</Text>
+              <Text style={styles.ghostButtonText}>{strings.detail.refreshServerState}</Text>
             </Pressable>
             {isBlockedByFailure ? (
               <Pressable style={styles.secondaryButton} onPress={onRetryBlockedAction}>
-                <Text style={styles.secondaryButtonText}>Reprogrammer l action</Text>
+                <Text style={styles.secondaryButtonText}>{strings.detail.rescheduleAction}</Text>
               </Pressable>
             ) : null}
             <Pressable style={styles.secondaryButton} onPress={onDiscardBlockedAction}>
-              <Text style={styles.secondaryButtonText}>Supprimer l action locale</Text>
+              <Text style={styles.secondaryButtonText}>{strings.detail.removeLocalAction}</Text>
             </Pressable>
           </View>
         </View>
@@ -480,26 +475,26 @@ export function DeliveryDetailScreen({
       <View style={styles.actionGroup}>
         {delivery.status === 'ASSIGNED' ? (
           <Pressable style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onPickup}>
-            <Text style={styles.primaryButtonText}>Marquer recuperee</Text>
+            <Text style={styles.primaryButtonText}>{strings.detail.markPickedUp}</Text>
           </Pressable>
         ) : null}
 
         {delivery.status === 'PICKED_UP' ? (
           <Pressable style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onStart}>
-            <Text style={styles.primaryButtonText}>Demarrer la livraison</Text>
+            <Text style={styles.primaryButtonText}>{strings.detail.startDelivery}</Text>
           </Pressable>
         ) : null}
 
         {delivery.status === 'IN_TRANSIT' ? (
           <Pressable style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onComplete}>
-            <Text style={styles.primaryButtonText}>Marquer livree</Text>
+            <Text style={styles.primaryButtonText}>{strings.detail.markDelivered}</Text>
           </Pressable>
         ) : null}
       </View>
 
       {(delivery.status === 'ASSIGNED' || delivery.status === 'PICKED_UP' || delivery.status === 'IN_TRANSIT') ? (
         <View style={styles.failurePanel}>
-          <Text style={styles.failureLabel}>Motif d echec</Text>
+          <Text style={styles.failureLabel}>{strings.detail.failureReason}</Text>
           <View style={styles.quickReasonRow}>
             {quickFailureReasons.map((reason) => (
               <Pressable
@@ -514,14 +509,14 @@ export function DeliveryDetailScreen({
           </View>
           <TextInput
             multiline
-            placeholder="Exemple: client absent, adresse introuvable..."
+            placeholder={strings.detail.failurePlaceholder}
             placeholderTextColor="#64748b"
             style={styles.textArea}
             value={failureDraft}
             onChangeText={onFailureDraftChange}
           />
           <Text style={[styles.counterText, trimmedFailureDraft.length > 180 && styles.counterTextError]}>
-            {trimmedFailureDraft.length}/180 caracteres
+            {strings.detail.failureCounter(trimmedFailureDraft.length)}
           </Text>
           <Pressable
             testID="fail-delivery-button"
@@ -529,7 +524,7 @@ export function DeliveryDetailScreen({
             disabled={isSaving || isFailureDraftInvalid}
             onPress={onFail}
           >
-            <Text style={styles.secondaryButtonText}>Signaler un echec</Text>
+            <Text style={styles.secondaryButtonText}>{strings.detail.submitFailure}</Text>
           </Pressable>
         </View>
       ) : null}

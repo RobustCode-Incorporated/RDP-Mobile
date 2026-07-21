@@ -1,3 +1,5 @@
+import { strings } from '../i18n/strings';
+
 const STALE_CACHE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 export interface SyncStatus {
@@ -14,7 +16,7 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
 
   if (Number.isNaN(timestamp)) {
     return {
-      label: 'Derniere synchro indisponible.',
+      label: strings.sync.unavailable,
       isStale: true,
     };
   }
@@ -24,14 +26,14 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
 
   if (elapsedMinutes < 1) {
     return {
-      label: 'Synchro a l instant.',
+      label: strings.sync.now,
       isStale: false,
     };
   }
 
   if (elapsedMinutes < 60) {
     return {
-      label: `Derniere synchro il y a ${elapsedMinutes} min.`,
+      label: strings.sync.minutesAgo(elapsedMinutes),
       isStale: false,
     };
   }
@@ -40,7 +42,7 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
 
   if (elapsedHours < 24) {
     return {
-      label: `Derniere synchro il y a ${elapsedHours} h.`,
+      label: strings.sync.hoursAgo(elapsedHours),
       isStale: false,
     };
   }
@@ -48,7 +50,7 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
   const elapsedDays = Math.floor(elapsedHours / 24);
 
   return {
-    label: `Cache hors delai: derniere synchro il y a ${elapsedDays} j.`,
+    label: strings.sync.staleDays(elapsedDays),
     isStale: elapsedMs >= STALE_CACHE_THRESHOLD_MS,
   };
 }
