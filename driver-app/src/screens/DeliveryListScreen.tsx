@@ -1,12 +1,19 @@
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { getSyncStatus } from '../app/syncStatus';
 import { LocaleSwitcher } from '../components/LocaleSwitcher';
 import { useI18n } from '../i18n/I18nProvider';
 import type { DriverDeliveryDto, PendingAction, StoredSession } from '../types/api';
 import { palette, statusBadgeColors } from '../theme/palette';
 
+type DriverCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
 interface DeliveryListScreenProps {
   session: StoredSession;
+  currentLocation: DriverCoordinates | null;
   deliveries: DriverDeliveryDto[];
   pendingActionCountByDelivery: Record<number, number>;
   blockedActionByDelivery: Record<number, PendingAction>;
@@ -24,6 +31,7 @@ interface DeliveryListScreenProps {
 
 export function DeliveryListScreen({
   session,
+  currentLocation,
   deliveries,
   pendingActionCountByDelivery,
   blockedActionByDelivery,
@@ -78,6 +86,33 @@ export function DeliveryListScreen({
             <Text style={styles.ghostButtonText}>{strings.list.removeConflicts(blockedActionCount)}</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View style={styles.mapCard}>
+        <Text style={styles.mapTitle}>{strings.list.liveMapTitle}</Text>
+        {currentLocation ? (
+          <>
+            <MapView
+              style={styles.mapView}
+              region={{
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+                latitudeDelta: 0.02,
+                longitudeDelta: 0.02,
+              }}
+            >
+              <Marker
+                coordinate={currentLocation}
+                title={strings.list.liveDriverMarkerTitle}
+                description={strings.list.liveDriverMarkerDescription}
+                pinColor="#2563EB"
+              />
+            </MapView>
+            <Text style={styles.mapHint}>{strings.list.liveMapHintReady}</Text>
+          </>
+        ) : (
+          <Text style={styles.mapHint}>{strings.list.liveMapHintMissing}</Text>
+        )}
       </View>
 
       {blockedActionCount > 0 ? (
@@ -220,6 +255,27 @@ const styles = StyleSheet.create({
     backgroundColor: palette.warningBg,
     padding: 16,
     gap: 6,
+  },
+  mapCard: {
+    borderRadius: 22,
+    backgroundColor: palette.card,
+    padding: 14,
+    gap: 10,
+  },
+  mapTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: palette.textStrong,
+  },
+  mapView: {
+    width: '100%',
+    height: 210,
+    borderRadius: 14,
+  },
+  mapHint: {
+    color: palette.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   warningTitle: {
     color: palette.warningText,

@@ -65,6 +65,7 @@ function AppContent() {
       ) : (
         <DeliveryListScreen
           session={app.session}
+          currentLocation={app.currentLocation}
           deliveries={app.deliveries}
           pendingActionCountByDelivery={app.pendingActionCountByDelivery}
           blockedActionByDelivery={app.blockedActionByDelivery}

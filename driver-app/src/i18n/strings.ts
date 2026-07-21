@@ -36,6 +36,11 @@ export const localizedStrings = {
     conflictText: 'L etat du serveur ne correspond plus a l action locale. Ouvrez le detail pour actualiser puis supprimer l action obsolete.',
     failedReplayText: 'La derniere tentative a echoue apres plusieurs reprises. Ouvrez le detail pour reprogrammer ou supprimer cette action.',
     openDetail: 'Ouvrir le detail',
+    liveMapTitle: 'Carte live chauffeur',
+    liveMapHintReady: 'Position en direct active. Ouvrez une livraison pour voir le trajet detaille.',
+    liveMapHintMissing: 'Position non disponible pour le moment. Verifiez la permission localisation.',
+    liveDriverMarkerTitle: 'Votre position',
+    liveDriverMarkerDescription: 'Position GPS en direct',
   },
   detail: {
     back: 'Retour aux livraisons',
@@ -154,6 +159,11 @@ export const localizedStrings = {
       conflictText: 'The server state no longer matches the local action. Open details to refresh and remove obsolete local action.',
       failedReplayText: 'The latest attempt failed after several retries. Open details to reschedule or remove this action.',
       openDetail: 'Open details',
+      liveMapTitle: 'Driver live map',
+      liveMapHintReady: 'Live position is active. Open a delivery to view detailed route guidance.',
+      liveMapHintMissing: 'Position is currently unavailable. Check location permissions.',
+      liveDriverMarkerTitle: 'Your position',
+      liveDriverMarkerDescription: 'Live GPS position',
     },
     detail: {
       back: 'Back to deliveries',
