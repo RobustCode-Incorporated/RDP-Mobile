@@ -10,6 +10,13 @@ type Coordinates = {
   longitude: number;
 };
 
+type RouteSummary = {
+  coordinates: Coordinates[];
+  distanceKm: number;
+  durationMinutes: number;
+  refreshedAt: string;
+};
+
 const quickFailureReasons = [
   'Client absent',
   'Adresse introuvable',
@@ -88,6 +95,47 @@ function buildExternalDirectionsUrl(origin: Coordinates | null, destination: Coo
   return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originQuery)}&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
 }
 
+async function fetchDrivingRoute(origin: Coordinates, destination: Coordinates): Promise<RouteSummary | null> {
+  const url = [
+    'https://router.project-osrm.org/route/v1/driving/',
+    `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`,
+    '?overview=full&geometries=geojson',
+  ].join('');
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error('Impossible de recuperer un itineraire live.');
+  }
+
+  const payload = await response.json() as {
+    routes?: Array<{
+      distance: number;
+      duration: number;
+      geometry?: {
+        coordinates?: number[][];
+      };
+    }>;
+  };
+
+  const firstRoute = payload.routes?.[0];
+
+  if (!firstRoute) {
+    return null;
+  }
+
+  const coordinates = (firstRoute.geometry?.coordinates ?? [])
+    .filter((point) => point.length >= 2)
+    .map((point) => ({ latitude: point[1], longitude: point[0] }));
+
+  return {
+    coordinates,
+    distanceKm: firstRoute.distance / 1000,
+    durationMinutes: Math.max(1, Math.round(firstRoute.duration / 60)),
+    refreshedAt: new Date().toISOString(),
+  };
+}
+
 export function DeliveryDetailScreen({
   delivery,
   currentLocation,
@@ -114,6 +162,9 @@ export function DeliveryDetailScreen({
   const [pickupCoordinates, setPickupCoordinates] = useState<Coordinates | null>(parseCoordinatesFromAddress(delivery.pickupAddress));
   const [destinationCoordinates, setDestinationCoordinates] = useState<Coordinates | null>(parseCoordinatesFromAddress(delivery.deliveryAddress));
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [routeSummary, setRouteSummary] = useState<RouteSummary | null>(null);
+  const [isRouting, setIsRouting] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -169,8 +220,65 @@ export function DeliveryDetailScreen({
     };
   }, [delivery.pickupAddress, delivery.deliveryAddress]);
 
+  const activeTarget = useMemo(() => {
+    if (delivery.status === 'ASSIGNED' || delivery.status === 'PICKED_UP') {
+      return pickupCoordinates;
+    }
+
+    return destinationCoordinates;
+  }, [delivery.status, pickupCoordinates, destinationCoordinates]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!currentLocation || !activeTarget) {
+      setRouteSummary(null);
+      setRoutingError(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const syncRoute = async () => {
+      setIsRouting(true);
+
+      try {
+        const nextRoute = await fetchDrivingRoute(currentLocation, activeTarget);
+
+        if (isMounted) {
+          setRouteSummary(nextRoute);
+          setRoutingError(null);
+        }
+      } catch {
+        if (isMounted) {
+          setRoutingError('ETA live indisponible. Estimation locale affichee.');
+          setRouteSummary(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsRouting(false);
+        }
+      }
+    };
+
+    void syncRoute();
+    const interval = setInterval(() => {
+      void syncRoute();
+    }, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [currentLocation, activeTarget]);
+
   const mapRegion = useMemo(() => {
-    const points = [currentLocation, pickupCoordinates, destinationCoordinates].filter((point): point is Coordinates => Boolean(point));
+    const points = [
+      currentLocation,
+      pickupCoordinates,
+      destinationCoordinates,
+      ...(routeSummary?.coordinates ?? []),
+    ].filter((point): point is Coordinates => Boolean(point));
 
     if (points.length === 0) {
       return null;
@@ -189,24 +297,32 @@ export function DeliveryDetailScreen({
       latitudeDelta: Math.max(0.01, (maxLatitude - minLatitude) * 1.8),
       longitudeDelta: Math.max(0.01, (maxLongitude - minLongitude) * 1.8),
     };
-  }, [currentLocation, pickupCoordinates, destinationCoordinates]);
+  }, [currentLocation, pickupCoordinates, destinationCoordinates, routeSummary]);
 
-  const distanceToDestinationKm = useMemo(() => {
-    if (!currentLocation || !destinationCoordinates) {
+  const distanceToTargetKm = useMemo(() => {
+    if (routeSummary) {
+      return routeSummary.distanceKm;
+    }
+
+    if (!currentLocation || !activeTarget) {
       return null;
     }
 
-    return haversineDistanceKm(currentLocation, destinationCoordinates);
-  }, [currentLocation, destinationCoordinates]);
+    return haversineDistanceKm(currentLocation, activeTarget);
+  }, [currentLocation, activeTarget, routeSummary]);
 
   const estimatedEtaMinutes = useMemo(() => {
-    if (distanceToDestinationKm === null) {
+    if (routeSummary) {
+      return routeSummary.durationMinutes;
+    }
+
+    if (distanceToTargetKm === null) {
       return null;
     }
 
     const assumedCitySpeedKmh = 35;
-    return Math.max(1, Math.round((distanceToDestinationKm / assumedCitySpeedKmh) * 60));
-  }, [distanceToDestinationKm]);
+    return Math.max(1, Math.round((distanceToTargetKm / assumedCitySpeedKmh) * 60));
+  }, [distanceToTargetKm, routeSummary]);
 
   const openDirections = async (target: Coordinates | null) => {
     if (!target) {
@@ -286,17 +402,31 @@ export function DeliveryDetailScreen({
                 strokeWidth={2}
               />
             ) : null}
+            {routeSummary && routeSummary.coordinates.length > 1 ? (
+              <Polyline
+                coordinates={routeSummary.coordinates}
+                strokeColor="#7C3AED"
+                strokeWidth={4}
+              />
+            ) : null}
           </MapView>
         ) : null}
 
-        {distanceToDestinationKm !== null ? (
+        {isRouting ? <Text style={styles.mapHint}>Calcul ETA live en cours...</Text> : null}
+        {routingError ? <Text style={styles.errorText}>{routingError}</Text> : null}
+
+        {distanceToTargetKm !== null ? (
           <Text style={styles.mapMetric}>
-            Distance approx. jusqu a destination: {distanceToDestinationKm.toFixed(1)} km
+            Distance {routeSummary ? 'itinerariee' : 'approx.'}: {distanceToTargetKm.toFixed(1)} km
             {estimatedEtaMinutes !== null ? ` (ETA ~ ${estimatedEtaMinutes} min)` : ''}
           </Text>
         ) : (
-          <Text style={styles.mapHint}>ETA indisponible tant que la position live ou la destination manque.</Text>
+          <Text style={styles.mapHint}>ETA indisponible tant que la position live ou la prochaine etape manque.</Text>
         )}
+
+        {routeSummary?.refreshedAt ? (
+          <Text style={styles.mapHint}>Derniere mise a jour ETA: {new Date(routeSummary.refreshedAt).toLocaleTimeString()}</Text>
+        ) : null}
 
         <View style={styles.mapActions}>
           <Pressable
