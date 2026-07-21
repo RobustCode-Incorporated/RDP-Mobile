@@ -27,6 +27,7 @@ import {
   savePendingActions,
   saveSession,
 } from '../lib/session';
+import { trackDriverEvent } from '../lib/telemetry';
 import type { DriverDeliveryDto, PendingAction, PendingActionType, StoredSession } from '../types/api';
 import {
   buildPendingActionCountByDelivery,
@@ -80,6 +81,7 @@ export function useDriverApp() {
 
     if (status !== 'granted') {
       setBannerMessage('Partage de localisation desactive: permission non accordee.');
+      void trackDriverEvent('location_permission_denied');
       return;
     }
 
@@ -106,11 +108,15 @@ export function useDriverApp() {
             longitude: position.coords.longitude,
           });
           await updateMyLocation(position.coords.latitude, position.coords.longitude);
+          void trackDriverEvent('location_sync_success');
         } catch (error) {
           if (isRecoverableNetworkError(error)) {
             return;
           }
 
+          void trackDriverEvent('location_sync_failed', {
+            reason: getApiErrorMessage(error),
+          });
           setErrorMessage(getApiErrorMessage(error));
         }
       }
@@ -119,6 +125,7 @@ export function useDriverApp() {
 
   useEffect(() => {
     setUnauthorizedHandler(async () => {
+      void trackDriverEvent('session_unauthorized_reset');
       await stopLocationTracking();
       setAuthToken(null);
       setSession(null);
@@ -162,7 +169,12 @@ export function useDriverApp() {
         setAuthToken(savedSession.token);
         setSession(savedSession);
         setScreen('list');
+        void trackDriverEvent('session_restore_success', {
+          hasCachedDeliveries: Boolean(cachedDeliveries?.deliveries.length),
+          pendingActionCount: queuedActions.length,
+        });
       } catch {
+        void trackDriverEvent('session_restore_failed');
         setErrorMessage('Impossible de restaurer la session enregistree.');
       } finally {
         setIsRestoring(false);
@@ -221,6 +233,10 @@ export function useDriverApp() {
         setSelectedDeliveryId(null);
         setScreen('list');
       }
+
+      void trackDriverEvent('deliveries_refresh_success', {
+        deliveryCount: nextDeliveries.length,
+      });
     } catch (error) {
       if (isRecoverableNetworkError(error)) {
         const cachedDeliveries = await loadDeliveryCache();
@@ -230,10 +246,19 @@ export function useDriverApp() {
           setLastSuccessfulSync(cachedDeliveries.lastSuccessfulSync);
           setBannerMessage('Mode hors ligne: affichage des livraisons en cache.');
           setErrorMessage(null);
+          void trackDriverEvent('deliveries_refresh_offline_cache', {
+            cachedDeliveryCount: cachedDeliveries.deliveries.length,
+          });
         } else {
           setErrorMessage('Connexion indisponible et aucun cache local disponible.');
+          void trackDriverEvent('deliveries_refresh_failed', {
+            reason: 'network_unavailable_no_cache',
+          });
         }
       } else {
+        void trackDriverEvent('deliveries_refresh_failed', {
+          reason: getApiErrorMessage(error),
+        });
         setErrorMessage(getApiErrorMessage(error));
       }
     } finally {
@@ -275,6 +300,10 @@ export function useDriverApp() {
       return;
     }
 
+    void trackDriverEvent('auth_login_attempt', {
+      email: email.trim(),
+    });
+
     setIsSubmitting(true);
     setErrorMessage(null);
     setBannerMessage(null);
@@ -291,9 +320,15 @@ export function useDriverApp() {
       setSession(nextSession);
       setPassword('');
       setScreen('list');
+      void trackDriverEvent('auth_login_success', {
+        role: nextSession.role,
+      });
     } catch (error) {
       setAuthToken(null);
       setSession(null);
+      void trackDriverEvent('auth_login_failed', {
+        reason: getApiErrorMessage(error),
+      });
       setErrorMessage(getApiErrorMessage(error));
     } finally {
       setIsSubmitting(false);
@@ -301,6 +336,7 @@ export function useDriverApp() {
   };
 
   const handleLogout = async () => {
+    void trackDriverEvent('logout');
     await stopLocationTracking();
     setAuthToken(null);
     setSession(null);
@@ -378,6 +414,10 @@ export function useDriverApp() {
         }
 
         updateDelivery(updatedDelivery);
+        void trackDriverEvent('queue_replay_success', {
+          actionType: action.actionType,
+          deliveryId: action.deliveryId,
+        });
         workingQueue = workingQueue.filter((item) => item.actionId !== action.actionId);
       } catch (error) {
         if (isRecoverableNetworkError(error)) {
@@ -388,6 +428,10 @@ export function useDriverApp() {
           ));
 
           await persistPendingQueue(nextQueue);
+          void trackDriverEvent('queue_replay_network_failure', {
+            actionType: action.actionType,
+            deliveryId: action.deliveryId,
+          });
 
           if ((action.retryCount + 1) >= 5) {
             setBannerMessage(`L action en attente pour la livraison #${action.deliveryId} a atteint la limite de relecture automatique.`);
@@ -404,6 +448,11 @@ export function useDriverApp() {
             : item
         ));
         await persistPendingQueue(workingQueue);
+        void trackDriverEvent('queue_replay_conflict', {
+          actionType: action.actionType,
+          deliveryId: action.deliveryId,
+          reason: getApiErrorMessage(error),
+        });
         setBannerMessage(`Action en attente en conflit pour la livraison #${action.deliveryId}. Une action manuelle est requise.`);
       }
     }
@@ -411,6 +460,9 @@ export function useDriverApp() {
     await persistPendingQueue(workingQueue);
 
     if (deferredReplayCount > 0 && workingQueue.some((action) => action.state === 'queued')) {
+      void trackDriverEvent('queue_replay_deferred', {
+        deferredReplayCount,
+      });
       setBannerMessage(`${deferredReplayCount} action(s) en attente patienteront avant la prochaine relecture automatique.`);
     }
   };
@@ -459,6 +511,10 @@ export function useDriverApp() {
   ) => {
     const nextQueue = [...pendingActions, createPendingAction(deliveryId, actionType, payload, lastError)];
     await persistPendingQueue(nextQueue);
+    void trackDriverEvent('delivery_action_queued_offline', {
+      actionType,
+      deliveryId,
+    });
     setBannerMessage('Action hors ligne enregistree. Elle sera rejouee des le retour du reseau.');
   };
 
@@ -477,6 +533,10 @@ export function useDriverApp() {
     try {
       const updatedDelivery = await action();
       updateDelivery(updatedDelivery);
+      void trackDriverEvent('delivery_action_success', {
+        actionType,
+        deliveryId,
+      });
       setBannerMessage(successMessage);
     } catch (error) {
       if (isRecoverableNetworkError(error)) {
@@ -488,6 +548,11 @@ export function useDriverApp() {
 
         await queuePendingAction(deliveryId, actionType, payload, getApiErrorMessage(error));
       } else {
+        void trackDriverEvent('delivery_action_failed', {
+          actionType,
+          deliveryId,
+          reason: getApiErrorMessage(error),
+        });
         setErrorMessage(getApiErrorMessage(error));
       }
     } finally {
