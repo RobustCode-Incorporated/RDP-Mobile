@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import * as Location from 'expo-location';
 import { login } from '../api/auth';
 import {
   getApiErrorMessage,
@@ -13,6 +14,7 @@ import {
   fetchMyDeliveries,
   pickupDelivery,
   startDelivery,
+  updateMyLocation,
 } from '../api/driver';
 import {
   clearDeliveryCache,
@@ -40,6 +42,8 @@ import {
 type Screen = 'login' | 'list' | 'detail';
 
 export function useDriverApp() {
+  const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const lastLocationPushAtRef = useRef(0);
   const [session, setSession] = useState<StoredSession | null>(null);
   const [screen, setScreen] = useState<Screen>('login');
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<number | null>(null);
@@ -56,8 +60,56 @@ export function useDriverApp() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [savingDeliveryId, setSavingDeliveryId] = useState<number | null>(null);
 
+  const stopLocationTracking = async () => {
+    if (!locationSubscriptionRef.current) {
+      return;
+    }
+
+    locationSubscriptionRef.current.remove();
+    locationSubscriptionRef.current = null;
+  };
+
+  const startLocationTracking = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+
+    if (status !== 'granted') {
+      setBannerMessage('Partage de localisation desactive: permission non accordee.');
+      return;
+    }
+
+    await stopLocationTracking();
+
+    locationSubscriptionRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.Balanced,
+        distanceInterval: 25,
+        timeInterval: 15000,
+      },
+      async (position) => {
+        const now = Date.now();
+
+        if (now - lastLocationPushAtRef.current < 10000) {
+          return;
+        }
+
+        lastLocationPushAtRef.current = now;
+
+        try {
+          await updateMyLocation(position.coords.latitude, position.coords.longitude);
+        } catch (error) {
+          if (isRecoverableNetworkError(error)) {
+            return;
+          }
+
+          setErrorMessage(getApiErrorMessage(error));
+        }
+      }
+    );
+  };
+
   useEffect(() => {
     setUnauthorizedHandler(async () => {
+      await stopLocationTracking();
       setAuthToken(null);
       setSession(null);
       setDeliveries([]);
@@ -180,11 +232,13 @@ export function useDriverApp() {
 
   useEffect(() => {
     if (!session) {
+      void stopLocationTracking();
       setDeliveries([]);
       return;
     }
 
     void refreshDeliveries();
+    void startLocationTracking();
   }, [session]);
 
   useEffect(() => {
@@ -235,6 +289,7 @@ export function useDriverApp() {
   };
 
   const handleLogout = async () => {
+    await stopLocationTracking();
     setAuthToken(null);
     setSession(null);
     setDeliveries([]);

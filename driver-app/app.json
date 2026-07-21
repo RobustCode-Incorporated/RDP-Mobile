@@ -24,7 +24,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Autoriser l application chauffeur a partager votre localisation pendant la livraison."
+        }
+      ]
     ]
   }
 }
