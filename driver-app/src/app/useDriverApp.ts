@@ -41,6 +41,11 @@ import {
 
 type Screen = 'login' | 'list' | 'detail';
 
+type DriverCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
 export function useDriverApp() {
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastLocationPushAtRef = useRef(0);
@@ -59,6 +64,7 @@ export function useDriverApp() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [savingDeliveryId, setSavingDeliveryId] = useState<number | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<DriverCoordinates | null>(null);
 
   const stopLocationTracking = async () => {
     if (!locationSubscriptionRef.current) {
@@ -95,6 +101,10 @@ export function useDriverApp() {
         lastLocationPushAtRef.current = now;
 
         try {
+          setCurrentLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
           await updateMyLocation(position.coords.latitude, position.coords.longitude);
         } catch (error) {
           if (isRecoverableNetworkError(error)) {
@@ -113,6 +123,7 @@ export function useDriverApp() {
       setAuthToken(null);
       setSession(null);
       setDeliveries([]);
+      setCurrentLocation(null);
       setSelectedDeliveryId(null);
       setFailureDrafts({});
       setPendingActions([]);
@@ -234,6 +245,7 @@ export function useDriverApp() {
     if (!session) {
       void stopLocationTracking();
       setDeliveries([]);
+      setCurrentLocation(null);
       return;
     }
 
@@ -293,6 +305,7 @@ export function useDriverApp() {
     setAuthToken(null);
     setSession(null);
     setDeliveries([]);
+    setCurrentLocation(null);
     setFailureDrafts({});
     setPendingActions([]);
     setLastSuccessfulSync(null);
@@ -524,6 +537,7 @@ export function useDriverApp() {
     email,
     password,
     deliveries,
+    currentLocation,
     failureDrafts,
     pendingActions,
     pendingActionCountByDelivery,

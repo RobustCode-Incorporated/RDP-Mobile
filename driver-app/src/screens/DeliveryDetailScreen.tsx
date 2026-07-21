@@ -1,6 +1,14 @@
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as Location from 'expo-location';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import type { DriverDeliveryDto, PendingAction } from '../types/api';
 import { palette, statusBadgeColors } from '../theme/palette';
+
+type Coordinates = {
+  latitude: number;
+  longitude: number;
+};
 
 const quickFailureReasons = [
   'Client absent',
@@ -11,6 +19,7 @@ const quickFailureReasons = [
 
 interface DeliveryDetailScreenProps {
   delivery: DriverDeliveryDto;
+  currentLocation: Coordinates | null;
   pendingActionCount: number;
   blockedAction: PendingAction | null;
   failureDraft: string;
@@ -28,8 +37,60 @@ interface DeliveryDetailScreenProps {
   onFail: () => void;
 }
 
+const LAT_LNG_PATTERN = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/;
+
+function parseCoordinatesFromAddress(address: string): Coordinates | null {
+  const match = LAT_LNG_PATTERN.exec(address);
+
+  if (!match) {
+    return null;
+  }
+
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    return null;
+  }
+
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function haversineDistanceKm(start: Coordinates, end: Coordinates) {
+  const earthRadiusKm = 6371;
+  const toRadians = (value: number) => value * (Math.PI / 180);
+  const deltaLatitude = toRadians(end.latitude - start.latitude);
+  const deltaLongitude = toRadians(end.longitude - start.longitude);
+
+  const a =
+    Math.sin(deltaLatitude / 2) * Math.sin(deltaLatitude / 2)
+    + Math.cos(toRadians(start.latitude))
+    * Math.cos(toRadians(end.latitude))
+    * Math.sin(deltaLongitude / 2)
+    * Math.sin(deltaLongitude / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+}
+
+function buildExternalDirectionsUrl(origin: Coordinates | null, destination: Coordinates) {
+  const destinationQuery = `${destination.latitude},${destination.longitude}`;
+
+  if (!origin) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
+  }
+
+  const originQuery = `${origin.latitude},${origin.longitude}`;
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originQuery)}&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
+}
+
 export function DeliveryDetailScreen({
   delivery,
+  currentLocation,
   pendingActionCount,
   blockedAction,
   failureDraft,
@@ -50,6 +111,111 @@ export function DeliveryDetailScreen({
   const isFailureDraftInvalid = !trimmedFailureDraft || trimmedFailureDraft.length > 180;
   const isBlockedByConflict = blockedAction?.state === 'conflicted';
   const isBlockedByFailure = blockedAction?.state === 'failed';
+  const [pickupCoordinates, setPickupCoordinates] = useState<Coordinates | null>(parseCoordinatesFromAddress(delivery.pickupAddress));
+  const [destinationCoordinates, setDestinationCoordinates] = useState<Coordinates | null>(parseCoordinatesFromAddress(delivery.deliveryAddress));
+  const [isGeocoding, setIsGeocoding] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const geocodeAddresses = async () => {
+      const parsedPickup = parseCoordinatesFromAddress(delivery.pickupAddress);
+      const parsedDestination = parseCoordinatesFromAddress(delivery.deliveryAddress);
+
+      if (isMounted) {
+        setPickupCoordinates(parsedPickup);
+        setDestinationCoordinates(parsedDestination);
+      }
+
+      if (parsedPickup && parsedDestination) {
+        return;
+      }
+
+      setIsGeocoding(true);
+
+      try {
+        if (!parsedPickup) {
+          const pickupResult = await Location.geocodeAsync(delivery.pickupAddress);
+
+          if (isMounted && pickupResult.length > 0) {
+            setPickupCoordinates({
+              latitude: pickupResult[0].latitude,
+              longitude: pickupResult[0].longitude,
+            });
+          }
+        }
+
+        if (!parsedDestination) {
+          const destinationResult = await Location.geocodeAsync(delivery.deliveryAddress);
+
+          if (isMounted && destinationResult.length > 0) {
+            setDestinationCoordinates({
+              latitude: destinationResult[0].latitude,
+              longitude: destinationResult[0].longitude,
+            });
+          }
+        }
+      } finally {
+        if (isMounted) {
+          setIsGeocoding(false);
+        }
+      }
+    };
+
+    void geocodeAddresses();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [delivery.pickupAddress, delivery.deliveryAddress]);
+
+  const mapRegion = useMemo(() => {
+    const points = [currentLocation, pickupCoordinates, destinationCoordinates].filter((point): point is Coordinates => Boolean(point));
+
+    if (points.length === 0) {
+      return null;
+    }
+
+    const latitudes = points.map((point) => point.latitude);
+    const longitudes = points.map((point) => point.longitude);
+    const minLatitude = Math.min(...latitudes);
+    const maxLatitude = Math.max(...latitudes);
+    const minLongitude = Math.min(...longitudes);
+    const maxLongitude = Math.max(...longitudes);
+
+    return {
+      latitude: (minLatitude + maxLatitude) / 2,
+      longitude: (minLongitude + maxLongitude) / 2,
+      latitudeDelta: Math.max(0.01, (maxLatitude - minLatitude) * 1.8),
+      longitudeDelta: Math.max(0.01, (maxLongitude - minLongitude) * 1.8),
+    };
+  }, [currentLocation, pickupCoordinates, destinationCoordinates]);
+
+  const distanceToDestinationKm = useMemo(() => {
+    if (!currentLocation || !destinationCoordinates) {
+      return null;
+    }
+
+    return haversineDistanceKm(currentLocation, destinationCoordinates);
+  }, [currentLocation, destinationCoordinates]);
+
+  const estimatedEtaMinutes = useMemo(() => {
+    if (distanceToDestinationKm === null) {
+      return null;
+    }
+
+    const assumedCitySpeedKmh = 35;
+    return Math.max(1, Math.round((distanceToDestinationKm / assumedCitySpeedKmh) * 60));
+  }, [distanceToDestinationKm]);
+
+  const openDirections = async (target: Coordinates | null) => {
+    if (!target) {
+      return;
+    }
+
+    const url = buildExternalDirectionsUrl(currentLocation, target);
+    await Linking.openURL(url);
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.contentContainer}>
@@ -73,6 +239,81 @@ export function DeliveryDetailScreen({
         <Text style={styles.metaLine}>Creee: {delivery.createdAt}</Text>
         {delivery.updatedAt ? <Text style={styles.metaLine}>Mise a jour: {delivery.updatedAt}</Text> : null}
         {pendingActionCount ? <Text style={styles.pendingText}>Actions en attente: {pendingActionCount}</Text> : null}
+      </View>
+
+      <View style={styles.mapCard}>
+        <Text style={styles.mapTitle}>Carte et navigation</Text>
+        {isGeocoding ? <Text style={styles.mapHint}>Geocodage des adresses en cours...</Text> : null}
+        {!mapRegion ? <Text style={styles.mapHint}>Coordonnees indisponibles pour afficher la carte.</Text> : null}
+
+        {mapRegion ? (
+          <MapView style={styles.mapView} initialRegion={mapRegion} region={mapRegion}>
+            {currentLocation ? (
+              <Marker
+                coordinate={currentLocation}
+                title="Position chauffeur"
+                description="Position live"
+                pinColor="#2563EB"
+              />
+            ) : null}
+            {pickupCoordinates ? (
+              <Marker
+                coordinate={pickupCoordinates}
+                title="Point de retrait"
+                description={delivery.pickupAddress}
+                pinColor="#D97706"
+              />
+            ) : null}
+            {destinationCoordinates ? (
+              <Marker
+                coordinate={destinationCoordinates}
+                title="Destination"
+                description={delivery.deliveryAddress}
+                pinColor="#059669"
+              />
+            ) : null}
+            {pickupCoordinates && destinationCoordinates ? (
+              <Polyline
+                coordinates={[pickupCoordinates, destinationCoordinates]}
+                strokeColor="#111827"
+                strokeWidth={3}
+              />
+            ) : null}
+            {currentLocation && pickupCoordinates ? (
+              <Polyline
+                coordinates={[currentLocation, pickupCoordinates]}
+                strokeColor="#2563EB"
+                strokeWidth={2}
+              />
+            ) : null}
+          </MapView>
+        ) : null}
+
+        {distanceToDestinationKm !== null ? (
+          <Text style={styles.mapMetric}>
+            Distance approx. jusqu a destination: {distanceToDestinationKm.toFixed(1)} km
+            {estimatedEtaMinutes !== null ? ` (ETA ~ ${estimatedEtaMinutes} min)` : ''}
+          </Text>
+        ) : (
+          <Text style={styles.mapHint}>ETA indisponible tant que la position live ou la destination manque.</Text>
+        )}
+
+        <View style={styles.mapActions}>
+          <Pressable
+            style={[styles.ghostButton, !pickupCoordinates && styles.buttonDisabled]}
+            disabled={!pickupCoordinates}
+            onPress={() => void openDirections(pickupCoordinates)}
+          >
+            <Text style={styles.ghostButtonText}>Itineraire vers retrait</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.ghostButton, !destinationCoordinates && styles.buttonDisabled]}
+            disabled={!destinationCoordinates}
+            onPress={() => void openDirections(destinationCoordinates)}
+          >
+            <Text style={styles.ghostButtonText}>Itineraire vers destination</Text>
+          </Pressable>
+        </View>
       </View>
 
       {bannerMessage ? <Text style={styles.successText}>{bannerMessage}</Text> : null}
@@ -222,6 +463,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: palette.warningText,
     fontWeight: '600',
+  },
+  mapCard: {
+    borderRadius: 22,
+    backgroundColor: palette.card,
+    padding: 14,
+    gap: 10,
+  },
+  mapTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: palette.textStrong,
+  },
+  mapHint: {
+    color: palette.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  mapMetric: {
+    color: palette.textSubtle,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  mapView: {
+    width: '100%',
+    height: 220,
+    borderRadius: 14,
+  },
+  mapActions: {
+    gap: 8,
   },
   successText: {
     color: palette.successText,

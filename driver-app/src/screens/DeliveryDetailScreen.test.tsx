@@ -3,6 +3,25 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { DeliveryDetailScreen } from './DeliveryDetailScreen';
 import type { DriverDeliveryDto, PendingAction } from '../types/api';
 
+jest.mock('expo-location', () => ({
+  geocodeAsync: jest.fn(async () => []),
+}));
+
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MockMapView = (props: any) => React.createElement(View, { testID: 'mock-map-view' }, props.children);
+  const MockMarker = (props: any) => React.createElement(View, { testID: 'mock-map-marker' }, props.children);
+  const MockPolyline = (props: any) => React.createElement(View, { testID: 'mock-map-polyline' }, props.children);
+
+  return {
+    __esModule: true,
+    default: MockMapView,
+    Marker: MockMarker,
+    Polyline: MockPolyline,
+  };
+});
+
 const delivery: DriverDeliveryDto = {
   id: 42,
   pickupAddress: '12 Rue du Depart',
@@ -38,6 +57,7 @@ describe('DeliveryDetailScreen', () => {
     const screen = await render(
       <DeliveryDetailScreen
         delivery={delivery}
+        currentLocation={null}
         pendingActionCount={0}
         blockedAction={null}
         failureDraft=""
@@ -66,6 +86,7 @@ describe('DeliveryDetailScreen', () => {
     const screen = await render(
       <DeliveryDetailScreen
         delivery={delivery}
+        currentLocation={null}
         pendingActionCount={0}
         blockedAction={null}
         failureDraft="   "
@@ -93,6 +114,7 @@ describe('DeliveryDetailScreen', () => {
     const screen = await render(
       <DeliveryDetailScreen
         delivery={delivery}
+        currentLocation={null}
         pendingActionCount={0}
         blockedAction={null}
         failureDraft="Client absent"
@@ -119,6 +141,7 @@ describe('DeliveryDetailScreen', () => {
     const screen = await render(
       <DeliveryDetailScreen
         delivery={delivery}
+        currentLocation={null}
         pendingActionCount={1}
         blockedAction={blockedAction}
         failureDraft="Client absent"

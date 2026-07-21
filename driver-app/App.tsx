@@ -35,6 +35,7 @@ export function App() {
       ) : app.screen === 'detail' && app.selectedDelivery ? (
         <DeliveryDetailScreen
           delivery={app.selectedDelivery}
+          currentLocation={app.currentLocation}
           pendingActionCount={app.pendingActionCountByDelivery[app.selectedDelivery.id] ?? 0}
           blockedAction={app.blockedActionByDelivery[app.selectedDelivery.id] ?? null}
           failureDraft={app.failureDrafts[app.selectedDelivery.id] ?? ''}
