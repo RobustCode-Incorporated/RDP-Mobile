@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { getSyncStatus } from '../app/syncStatus';
-import { strings } from '../i18n/strings';
+import { LocaleSwitcher } from '../components/LocaleSwitcher';
+import { useI18n } from '../i18n/I18nProvider';
 import type { DriverDeliveryDto, PendingAction, StoredSession } from '../types/api';
 import { palette, statusBadgeColors } from '../theme/palette';
 
@@ -37,7 +38,8 @@ export function DeliveryListScreen({
   onLogout,
   onOpenDelivery,
 }: DeliveryListScreenProps) {
-  const syncStatus = getSyncStatus(lastSuccessfulSync);
+  const { strings } = useI18n();
+  const syncStatus = getSyncStatus(lastSuccessfulSync, Date.now(), strings.sync);
   const conflictedCount = Object.values(blockedActionByDelivery).filter((action) => action.state === 'conflicted').length;
   const failedCount = Object.values(blockedActionByDelivery).filter((action) => action.state === 'failed').length;
 
@@ -47,6 +49,7 @@ export function DeliveryListScreen({
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={palette.primary} />}
     >
       <View style={styles.headerCard}>
+        <LocaleSwitcher />
         <Text style={styles.eyebrow}>{strings.list.activeSession}</Text>
         <Text style={styles.title}>{strings.list.hello(session.email)}</Text>
         <Text style={styles.subtitle}>{strings.list.detectedRole(session.role)}</Text>

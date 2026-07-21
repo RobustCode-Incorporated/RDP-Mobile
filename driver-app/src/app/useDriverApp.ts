@@ -27,7 +27,7 @@ import {
   savePendingActions,
   saveSession,
 } from '../lib/session';
-import { strings } from '../i18n/strings';
+import { useI18n } from '../i18n/I18nProvider';
 import { trackDriverEvent } from '../lib/telemetry';
 import type { DriverDeliveryDto, PendingAction, PendingActionType, StoredSession } from '../types/api';
 import {
@@ -49,6 +49,7 @@ type DriverCoordinates = {
 };
 
 export function useDriverApp() {
+  const { strings } = useI18n();
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastLocationPushAtRef = useRef(0);
   const [session, setSession] = useState<StoredSession | null>(null);

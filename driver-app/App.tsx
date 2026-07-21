@@ -1,13 +1,22 @@
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, SafeAreaView, StyleSheet, Text } from 'react-native';
+import { I18nProvider, useI18n } from './src/i18n/I18nProvider';
 import { useDriverApp } from './src/app/useDriverApp';
 import { DeliveryDetailScreen } from './src/screens/DeliveryDetailScreen';
 import { DeliveryListScreen } from './src/screens/DeliveryListScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
-import { strings } from './src/i18n/strings';
 import { palette } from './src/theme/palette';
 
 export function App() {
+  return (
+    <I18nProvider>
+      <AppContent />
+    </I18nProvider>
+  );
+}
+
+function AppContent() {
+  const { strings } = useI18n();
   const app = useDriverApp();
 
   if (app.isRestoring) {

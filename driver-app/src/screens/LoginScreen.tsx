@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { strings } from '../i18n/strings';
+import { LocaleSwitcher } from '../components/LocaleSwitcher';
+import { useI18n } from '../i18n/I18nProvider';
 import { palette } from '../theme/palette';
 
 interface LoginScreenProps {
@@ -21,8 +22,11 @@ export function LoginScreen({
   onPasswordChange,
   onSubmit,
 }: LoginScreenProps) {
+  const { strings } = useI18n();
+
   return (
     <View style={styles.container}>
+      <LocaleSwitcher />
       <Text style={styles.eyebrow}>{strings.login.eyebrow}</Text>
       <Text style={styles.title}>{strings.login.title}</Text>
       <Text style={styles.subtitle}>{strings.login.subtitle}</Text>

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { Marker, Polyline } from 'react-native-maps';
-import { strings } from '../i18n/strings';
+import { LocaleSwitcher } from '../components/LocaleSwitcher';
+import { useI18n } from '../i18n/I18nProvider';
 import type { DriverDeliveryDto, PendingAction } from '../types/api';
 import { palette, statusBadgeColors } from '../theme/palette';
 
@@ -17,8 +18,6 @@ type RouteSummary = {
   durationMinutes: number;
   refreshedAt: string;
 };
-
-const quickFailureReasons = strings.detail.quickFailureReasons;
 
 interface DeliveryDetailScreenProps {
   delivery: DriverDeliveryDto;
@@ -151,6 +150,8 @@ export function DeliveryDetailScreen({
   onComplete,
   onFail,
 }: DeliveryDetailScreenProps) {
+  const { strings } = useI18n();
+  const quickFailureReasons = strings.detail.quickFailureReasons;
   const trimmedFailureDraft = failureDraft.trim();
   const isFailureDraftInvalid = !trimmedFailureDraft || trimmedFailureDraft.length > 180;
   const isBlockedByConflict = blockedAction?.state === 'conflicted';
@@ -331,6 +332,7 @@ export function DeliveryDetailScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.contentContainer}>
+      <LocaleSwitcher />
       <Pressable accessibilityRole="button" style={styles.backButton} onPress={onBack}>
         <Text style={styles.backButtonText}>{strings.detail.back}</Text>
       </Pressable>

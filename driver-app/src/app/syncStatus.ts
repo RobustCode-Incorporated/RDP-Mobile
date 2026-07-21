@@ -1,4 +1,4 @@
-import { strings } from '../i18n/strings';
+import { localizedStrings } from '../i18n/strings';
 
 const STALE_CACHE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
@@ -7,7 +7,13 @@ export interface SyncStatus {
   isStale: boolean;
 }
 
-export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now()): SyncStatus | null {
+type SyncStrings = typeof localizedStrings.fr.sync;
+
+export function getSyncStatus(
+  lastSuccessfulSync: string | null,
+  now = Date.now(),
+  syncStrings: SyncStrings = localizedStrings.fr.sync
+): SyncStatus | null {
   if (!lastSuccessfulSync) {
     return null;
   }
@@ -16,7 +22,7 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
 
   if (Number.isNaN(timestamp)) {
     return {
-      label: strings.sync.unavailable,
+      label: syncStrings.unavailable,
       isStale: true,
     };
   }
@@ -26,14 +32,14 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
 
   if (elapsedMinutes < 1) {
     return {
-      label: strings.sync.now,
+      label: syncStrings.now,
       isStale: false,
     };
   }
 
   if (elapsedMinutes < 60) {
     return {
-      label: strings.sync.minutesAgo(elapsedMinutes),
+      label: syncStrings.minutesAgo(elapsedMinutes),
       isStale: false,
     };
   }
@@ -42,7 +48,7 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
 
   if (elapsedHours < 24) {
     return {
-      label: strings.sync.hoursAgo(elapsedHours),
+      label: syncStrings.hoursAgo(elapsedHours),
       isStale: false,
     };
   }
@@ -50,7 +56,7 @@ export function getSyncStatus(lastSuccessfulSync: string | null, now = Date.now(
   const elapsedDays = Math.floor(elapsedHours / 24);
 
   return {
-    label: strings.sync.staleDays(elapsedDays),
+    label: syncStrings.staleDays(elapsedDays),
     isStale: elapsedMs >= STALE_CACHE_THRESHOLD_MS,
   };
 }
