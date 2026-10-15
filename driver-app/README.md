@@ -2,6 +2,14 @@
 
 This README tracks what is still pending for the mobile app, based on the roadmap in docs/mobile-development-roadmap.md, adjusted with work already completed in this repository.
 
+## API configuration
+
+Copy `.env.example` to `.env` (git-ignored) and set `EXPO_PUBLIC_API_BASE_URL` if needed.
+When it is unset, development builds (`__DEV__`) target the local backend
+(Android emulator `http://10.0.2.2:8080`, iOS simulator `http://127.0.0.1:8080`)
+and release builds target the hosted Render backend. `EXPO_PUBLIC_*` values are
+bundled into the app, so never put secrets in them.
+
 ## Current status snapshot (already done)
 
 - Core driver workflow is implemented (auth, list, detail, transitions).

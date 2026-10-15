@@ -1,15 +1,41 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 
-const hostedBaseUrl = 'https://rdp-backend-xr8r.onrender.com';
+export const hostedBaseUrl = 'https://rdp-backend-xr8r.onrender.com';
 
-const defaultBaseUrl = Platform.select({
+const localBaseUrl = Platform.select({
   android: 'http://10.0.2.2:8080',
   ios: 'http://127.0.0.1:8080',
   default: 'http://localhost:8080',
 });
 
-const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL ?? hostedBaseUrl ?? defaultBaseUrl;
+/**
+ * API base URL resolution:
+ * 1. EXPO_PUBLIC_API_BASE_URL when set (see .env.example) - wins in every build;
+ * 2. otherwise the local backend in development (__DEV__);
+ * 3. otherwise the hosted Render backend for release builds.
+ */
+export function resolveApiBaseUrl(options: {
+  envUrl: string | undefined;
+  isDev: boolean;
+  localUrl: string;
+  hostedUrl: string;
+}) {
+  const envUrl = options.envUrl?.trim();
+  if (envUrl) {
+    return envUrl;
+  }
+
+  return options.isDev ? options.localUrl : options.hostedUrl;
+}
+
+// process.env.EXPO_PUBLIC_* must be referenced statically so Expo can inline it at build time.
+const baseURL = resolveApiBaseUrl({
+  envUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
+  isDev: typeof __DEV__ !== 'undefined' && __DEV__,
+  localUrl: localBaseUrl,
+  hostedUrl: hostedBaseUrl,
+});
 
 let authToken: string | null = null;
 let unauthorizedHandler: null | (() => void | Promise<void>) = null;
