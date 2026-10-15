@@ -3,6 +3,15 @@
 .vscode/
 .idea/
 
+# Generic dependencies, build outputs and logs
+node_modules/
+dist/
+build/
+coverage/
+*.log
+logs/
+.expo/
+
 # Node and Expo artifacts under driver-app
 /driver-app/node_modules/
 /driver-app/.expo/
