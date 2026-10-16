@@ -32,7 +32,7 @@ import {
 import { useI18n } from '../i18n/I18nProvider';
 import { trackDriverEvent } from '../lib/telemetry';
 import type { Delivery, PendingAction, PendingActionType, StoredSession } from '../types/api';
-import { isActiveDelivery } from '../types/api';
+import { FAIL_REASON_MAX_LENGTH, isActiveDelivery } from '../types/api';
 import {
   isHeartbeatDue,
   LOCATION_HEARTBEAT_INTERVAL_MS,
@@ -61,7 +61,6 @@ type DriverCoordinates = {
 
 /** Contract 9.1: driver app polls /me every 30 s while in the foreground. */
 const POLL_INTERVAL_MS = 30_000;
-export const FAIL_REASON_MAX_LENGTH = 180;
 
 function executePendingAction(action: PendingAction) {
   switch (action.actionType) {

@@ -58,7 +58,8 @@ function AppContent() {
           onPickup={() => void app.actionHandlers.pickup(app.selectedDelivery!.id)}
           onStart={() => void app.actionHandlers.start(app.selectedDelivery!.id)}
           onComplete={() => void app.actionHandlers.complete(app.selectedDelivery!.id)}
-          onFail={(reason) => void app.handleFailDelivery(app.selectedDelivery!.id, reason)}
+          onFail={(reason) => app.handleFailDelivery(app.selectedDelivery!.id, reason)}
+          loadHistory={app.loadDeliveryHistory}
         />
       ) : (
         <DeliveryListScreen

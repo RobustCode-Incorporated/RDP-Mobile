@@ -121,6 +121,9 @@ export interface Driver {
   lastLocationAt: string | null;
 }
 
+/** `fail.reason`: required, not blank, max 180 (contract 4.9). */
+export const FAIL_REASON_MAX_LENGTH = 180;
+
 export const ACTIVE_DELIVERY_STATUSES: readonly DeliveryStatus[] = ['ASSIGNED', 'PICKED_UP', 'IN_TRANSIT'];
 export const TERMINAL_DELIVERY_STATUSES: readonly DeliveryStatus[] = ['DELIVERED', 'FAILED', 'CANCELLED'];
 
