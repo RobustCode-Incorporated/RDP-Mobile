@@ -4,7 +4,8 @@ import { describe, expect, it, jest, beforeEach } from '@jest/globals';
 import { Text, View } from 'react-native';
 import { triggerUnauthorizedHandlerForTests } from '../api/client';
 import { login } from '../api/auth';
-import { failDelivery, fetchDelivery, fetchMyDeliveries, startDelivery } from '../api/driver';
+import { failDelivery, fetchDelivery, fetchMyDeliveries, startDelivery, updateMyLocation } from '../api/driver';
+import * as Location from 'expo-location';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { clearDeliveryCache, clearPendingActions, clearSession, loadDeliveryCache, loadPendingActions, loadSession, saveDeliveryCache, savePendingActions } from '../lib/session';
 import { useDriverApp } from './useDriverApp';
@@ -260,6 +261,26 @@ describe('useDriverApp integration coverage', () => {
       expect(screen.getByText('error:Email ou mot de passe incorrect.')).toBeTruthy();
       expect(screen.queryByText('error:Votre session a expire. Veuillez vous reconnecter.')).toBeNull();
       expect(clearSessionMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('live location', () => {
+    it('sends location updates while a delivery is active', async () => {
+      await render(<DriverAppHarness />);
+
+      await waitFor(() => {
+        expect(Location.watchPositionAsync).toHaveBeenCalled();
+        expect(updateMyLocation).toHaveBeenCalledWith(48.8566, 2.3522);
+      });
+    });
+
+    it('does not track location when no delivery is active', async () => {
+      fetchMyDeliveriesMock.mockResolvedValue([{ ...pickedUpDelivery, status: 'DELIVERED' }]);
+      const screen = await render(<DriverAppHarness />);
+
+      await waitFor(() => expect(screen.getByText('statuses:DELIVERED')).toBeTruthy());
+      expect(Location.watchPositionAsync).not.toHaveBeenCalled();
+      expect(updateMyLocation).not.toHaveBeenCalled();
     });
   });
 });

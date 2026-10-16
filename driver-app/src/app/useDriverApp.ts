@@ -5,7 +5,6 @@ import { login } from '../api/auth';
 import {
   getApiErrorMessage,
   getApiErrorStatus,
-  isRecoverableNetworkError,
   isRetryableError,
   setAuthToken,
   setUnauthorizedHandler,
@@ -33,6 +32,14 @@ import {
 import { useI18n } from '../i18n/I18nProvider';
 import { trackDriverEvent } from '../lib/telemetry';
 import type { Delivery, PendingAction, PendingActionType, StoredSession } from '../types/api';
+import { isActiveDelivery } from '../types/api';
+import {
+  isHeartbeatDue,
+  LOCATION_HEARTBEAT_INTERVAL_MS,
+  LOCATION_PUSH_MIN_INTERVAL_MS,
+  shouldPushLocation,
+  type LocationPush,
+} from './locationThrottle';
 import {
   ACTION_TARGET_STATUS,
   applyQueuedActionsToDeliveries,
@@ -96,7 +103,10 @@ export function useDriverApp() {
   const stringsRef = useRef(strings);
   stringsRef.current = strings;
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
-  const lastLocationPushAtRef = useRef(0);
+  const lastLocationPushRef = useRef<LocationPush | null>(null);
+  const latestPositionRef = useRef<DriverCoordinates | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackingGenerationRef = useRef(0);
   const pendingActionsRef = useRef<PendingAction[]>([]);
   const deliveriesRef = useRef<Delivery[]>([]);
   const lastSuccessfulSyncRef = useRef<string | null>(null);
@@ -175,17 +185,45 @@ export function useDriverApp() {
     await commitDeliveries(next);
   };
 
-  const stopLocationTracking = async () => {
-    if (!locationSubscriptionRef.current) {
-      return;
-    }
+  const pushLocation = async (coordinates: DriverCoordinates) => {
+    lastLocationPushRef.current = { ...coordinates, at: Date.now() };
 
-    locationSubscriptionRef.current.remove();
-    locationSubscriptionRef.current = null;
+    try {
+      await updateMyLocation(coordinates.latitude, coordinates.longitude);
+      void trackDriverEvent('location_sync_success');
+    } catch (error) {
+      // Location sync is best effort: never block the driver with an error banner.
+      if (!isRetryableError(error)) {
+        void trackDriverEvent('location_sync_failed', {
+          reason: getApiErrorMessage(error),
+        });
+      }
+    }
   };
 
+  const stopLocationTracking = async () => {
+    trackingGenerationRef.current += 1;
+
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+
+    if (locationSubscriptionRef.current) {
+      locationSubscriptionRef.current.remove();
+      locationSubscriptionRef.current = null;
+    }
+  };
+
+  /** Foreground-only live location while a delivery is active (contract 9.1). */
   const startLocationTracking = async () => {
+    await stopLocationTracking();
+    const generation = trackingGenerationRef.current;
     const { status } = await Location.requestForegroundPermissionsAsync();
+
+    if (generation !== trackingGenerationRef.current) {
+      return;
+    }
 
     if (status !== 'granted') {
       setBannerMessage(stringsRef.current.hook.locationPermissionDenied);
@@ -193,42 +231,37 @@ export function useDriverApp() {
       return;
     }
 
-    await stopLocationTracking();
-
-    locationSubscriptionRef.current = await Location.watchPositionAsync(
+    const subscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.Balanced,
         distanceInterval: 25,
-        timeInterval: 15000,
+        timeInterval: LOCATION_PUSH_MIN_INTERVAL_MS,
       },
-      async (position) => {
-        const now = Date.now();
+      (position) => {
+        const coordinates = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        latestPositionRef.current = coordinates;
+        setCurrentLocation(coordinates);
 
-        if (now - lastLocationPushAtRef.current < 10000) {
-          return;
-        }
-
-        lastLocationPushAtRef.current = now;
-
-        try {
-          setCurrentLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-          await updateMyLocation(position.coords.latitude, position.coords.longitude);
-          void trackDriverEvent('location_sync_success');
-        } catch (error) {
-          if (isRecoverableNetworkError(error)) {
-            return;
-          }
-
-          void trackDriverEvent('location_sync_failed', {
-            reason: getApiErrorMessage(error),
-          });
-          setErrorMessage(getApiErrorMessage(error));
+        if (shouldPushLocation(lastLocationPushRef.current, coordinates, Date.now())) {
+          void pushLocation(coordinates);
         }
       }
     );
+
+    if (generation !== trackingGenerationRef.current) {
+      subscription.remove();
+      return;
+    }
+
+    locationSubscriptionRef.current = subscription;
+    heartbeatRef.current = setInterval(() => {
+      if (latestPositionRef.current && isHeartbeatDue(lastLocationPushRef.current, Date.now())) {
+        void pushLocation(latestPositionRef.current);
+      }
+    }, LOCATION_HEARTBEAT_INTERVAL_MS);
   };
 
   const resetLocalSessionState = async () => {
@@ -436,15 +469,28 @@ export function useDriverApp() {
   }, [deliveries, selectedDeliveryId, screen]);
 
   useEffect(() => {
-    if (!session) {
+    if (session) {
+      void refreshDeliveries();
+    }
+  }, [session]);
+
+  const hasActiveDelivery = useMemo(() => deliveries.some(isActiveDelivery), [deliveries]);
+
+  // Live location only while a delivery is ASSIGNED | PICKED_UP | IN_TRANSIT.
+  useEffect(() => {
+    if (!session || !hasActiveDelivery) {
       void stopLocationTracking();
+      latestPositionRef.current = null;
       setCurrentLocation(null);
       return;
     }
 
-    void refreshDeliveries();
     void startLocationTracking();
-  }, [session]);
+
+    return () => {
+      void stopLocationTracking();
+    };
+  }, [session, hasActiveDelivery]);
 
   useEffect(() => {
     if (!session) {
@@ -711,6 +757,7 @@ export function useDriverApp() {
     session,
     screen,
     selectedDelivery,
+    hasActiveDelivery,
     email,
     password,
     deliveries,
