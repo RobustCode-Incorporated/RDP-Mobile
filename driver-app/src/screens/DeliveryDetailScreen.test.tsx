@@ -37,14 +37,13 @@ const blockedAction: PendingAction = {
 
 describe('DeliveryDetailScreen', () => {
   it('prefills a quick failure reason when a chip is pressed', async () => {
-    const onFailureDraftChange = jest.fn();
+    const onFail = jest.fn();
     const screen = await render(
       <DeliveryDetailScreen
         delivery={delivery}
         currentLocation={null}
         pendingActionCount={0}
         blockedAction={null}
-        failureDraft=""
         bannerMessage={null}
         errorMessage={null}
         isSaving={false}
@@ -52,17 +51,17 @@ describe('DeliveryDetailScreen', () => {
         onRefreshServerState={jest.fn()}
         onRetryBlockedAction={jest.fn()}
         onDiscardBlockedAction={jest.fn()}
-        onFailureDraftChange={onFailureDraftChange}
         onPickup={jest.fn()}
         onStart={jest.fn()}
         onComplete={jest.fn()}
-        onFail={jest.fn()}
+        onFail={onFail}
       />
     );
 
-    fireEvent.press(screen.getByText('Client absent'));
+    await fireEvent.press(screen.getByText('Client absent'));
+    await fireEvent.press(screen.getByTestId('fail-delivery-button'));
 
-    expect(onFailureDraftChange).toHaveBeenCalledWith('Client absent');
+    expect(onFail).toHaveBeenCalledWith('Client absent');
   });
 
   it('disables failure submit when the reason is empty', async () => {
@@ -73,7 +72,6 @@ describe('DeliveryDetailScreen', () => {
         currentLocation={null}
         pendingActionCount={0}
         blockedAction={null}
-        failureDraft="   "
         bannerMessage={null}
         errorMessage={null}
         isSaving={false}
@@ -81,7 +79,6 @@ describe('DeliveryDetailScreen', () => {
         onRefreshServerState={jest.fn()}
         onRetryBlockedAction={jest.fn()}
         onDiscardBlockedAction={jest.fn()}
-        onFailureDraftChange={jest.fn()}
         onPickup={jest.fn()}
         onStart={jest.fn()}
         onComplete={jest.fn()}
@@ -89,7 +86,7 @@ describe('DeliveryDetailScreen', () => {
       />
     );
 
-    fireEvent.press(screen.getByTestId('fail-delivery-button'));
+    await fireEvent.press(screen.getByTestId('fail-delivery-button'));
 
     expect(onFail).not.toHaveBeenCalled();
   });
@@ -101,7 +98,6 @@ describe('DeliveryDetailScreen', () => {
         currentLocation={null}
         pendingActionCount={0}
         blockedAction={null}
-        failureDraft="Client absent"
         bannerMessage={null}
         errorMessage={null}
         isSaving={false}
@@ -109,7 +105,6 @@ describe('DeliveryDetailScreen', () => {
         onRefreshServerState={jest.fn()}
         onRetryBlockedAction={jest.fn()}
         onDiscardBlockedAction={jest.fn()}
-        onFailureDraftChange={jest.fn()}
         onPickup={jest.fn()}
         onStart={jest.fn()}
         onComplete={jest.fn()}
@@ -117,6 +112,7 @@ describe('DeliveryDetailScreen', () => {
       />
     );
 
+    await fireEvent.changeText(screen.getByPlaceholderText('Exemple: client absent, adresse introuvable...'), 'Client absent');
     expect(screen.getByText('13/180 caracteres')).toBeTruthy();
   });
 
@@ -128,7 +124,6 @@ describe('DeliveryDetailScreen', () => {
         currentLocation={null}
         pendingActionCount={1}
         blockedAction={blockedAction}
-        failureDraft="Client absent"
         bannerMessage={null}
         errorMessage={null}
         isSaving={false}
@@ -136,7 +131,6 @@ describe('DeliveryDetailScreen', () => {
         onRefreshServerState={jest.fn()}
         onRetryBlockedAction={jest.fn()}
         onDiscardBlockedAction={onDiscardBlockedAction}
-        onFailureDraftChange={jest.fn()}
         onPickup={jest.fn()}
         onStart={jest.fn()}
         onComplete={jest.fn()}
@@ -145,7 +139,7 @@ describe('DeliveryDetailScreen', () => {
     );
 
     expect(screen.getByText('Conflit entre file locale et serveur')).toBeTruthy();
-    fireEvent.press(screen.getByText('Supprimer l action locale'));
+    await fireEvent.press(screen.getByText('Supprimer l action locale'));
     expect(onDiscardBlockedAction).toHaveBeenCalled();
   });
 });

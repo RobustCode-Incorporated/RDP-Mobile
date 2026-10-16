@@ -24,7 +24,6 @@ interface DeliveryDetailScreenProps {
   currentLocation: Coordinates | null;
   pendingActionCount: number;
   blockedAction: PendingAction | null;
-  failureDraft: string;
   bannerMessage: string | null;
   errorMessage: string | null;
   isSaving: boolean;
@@ -32,11 +31,10 @@ interface DeliveryDetailScreenProps {
   onRefreshServerState: () => void;
   onRetryBlockedAction: () => void;
   onDiscardBlockedAction: () => void;
-  onFailureDraftChange: (value: string) => void;
   onPickup: () => void;
   onStart: () => void;
   onComplete: () => void;
-  onFail: () => void;
+  onFail: (reason: string) => void;
 }
 
 const LAT_LNG_PATTERN = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/;
@@ -136,7 +134,6 @@ export function DeliveryDetailScreen({
   currentLocation,
   pendingActionCount,
   blockedAction,
-  failureDraft,
   bannerMessage,
   errorMessage,
   isSaving,
@@ -144,13 +141,13 @@ export function DeliveryDetailScreen({
   onRefreshServerState,
   onRetryBlockedAction,
   onDiscardBlockedAction,
-  onFailureDraftChange,
   onPickup,
   onStart,
   onComplete,
   onFail,
 }: DeliveryDetailScreenProps) {
   const { strings } = useI18n();
+  const [failureDraft, onFailureDraftChange] = useState('');
   const quickFailureReasons = strings.detail.quickFailureReasons;
   const trimmedFailureDraft = failureDraft.trim();
   const isFailureDraftInvalid = !trimmedFailureDraft || trimmedFailureDraft.length > 180;
@@ -524,7 +521,7 @@ export function DeliveryDetailScreen({
             testID="fail-delivery-button"
             style={[styles.secondaryButton, (isSaving || isFailureDraftInvalid) && styles.buttonDisabled]}
             disabled={isSaving || isFailureDraftInvalid}
-            onPress={onFail}
+            onPress={() => onFail(failureDraft)}
           >
             <Text style={styles.secondaryButtonText}>{strings.detail.submitFailure}</Text>
           </Pressable>
