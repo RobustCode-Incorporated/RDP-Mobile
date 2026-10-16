@@ -12,6 +12,15 @@ export const localizedStrings = {
     submitting: 'Connexion...',
     submit: 'Se connecter',
   },
+  status: {
+    CREATED: 'Créée',
+    ASSIGNED: 'Assignée',
+    PICKED_UP: 'Récupérée',
+    IN_TRANSIT: 'En route',
+    DELIVERED: 'Livrée',
+    FAILED: 'Échec',
+    CANCELLED: 'Annulée',
+  },
   list: {
     activeSession: 'Session active',
     hello: (email: string) => `Bonjour ${email}`,
@@ -38,7 +47,18 @@ export const localizedStrings = {
     openDetail: 'Ouvrir le detail',
     liveMapTitle: 'Carte live chauffeur',
     liveMapHintReady: 'Position en direct active. Ouvrez une livraison pour voir le trajet detaille.',
-    liveMapHintMissing: 'Position non disponible pour le moment. Verifiez la permission localisation.',
+    liveMapHintMissing: 'Votre position est partagée uniquement pendant une livraison en cours (permission localisation requise).',
+    activeTitle: (count: number) => `En cours (${count})`,
+    finishedTodayTitle: (count: number) => `Terminées aujourd'hui (${count})`,
+    showSection: 'Afficher',
+    hideSection: 'Masquer',
+    readyBadge: 'Prête',
+    cashBadge: (amount: string) => `Espèces : ${amount}`,
+    prepaidBadge: 'Payée',
+    customer: (name: string) => `Client : ${name}`,
+    failureReason: (reason: string) => `Motif : ${reason}`,
+    noActiveTitle: 'Aucune livraison en cours',
+    noActiveText: 'Les nouvelles livraisons assignées par l administrateur apparaîtront ici.',
     liveDriverMarkerTitle: 'Votre position',
     liveDriverMarkerDescription: 'Position GPS en direct',
   },
@@ -139,6 +159,15 @@ export const localizedStrings = {
       submitting: 'Signing in...',
       submit: 'Sign in',
     },
+    status: {
+      CREATED: 'Created',
+      ASSIGNED: 'Assigned',
+      PICKED_UP: 'Picked up',
+      IN_TRANSIT: 'On the way',
+      DELIVERED: 'Delivered',
+      FAILED: 'Failed',
+      CANCELLED: 'Cancelled',
+    },
     list: {
       activeSession: 'Active session',
       hello: (email: string) => `Hello ${email}`,
@@ -165,7 +194,18 @@ export const localizedStrings = {
       openDetail: 'Open details',
       liveMapTitle: 'Driver live map',
       liveMapHintReady: 'Live position is active. Open a delivery to view detailed route guidance.',
-      liveMapHintMissing: 'Position is currently unavailable. Check location permissions.',
+      liveMapHintMissing: 'Your position is only shared during an active delivery (location permission required).',
+      activeTitle: (count: number) => `In progress (${count})`,
+      finishedTodayTitle: (count: number) => `Finished today (${count})`,
+      showSection: 'Show',
+      hideSection: 'Hide',
+      readyBadge: 'Ready',
+      cashBadge: (amount: string) => `Cash: ${amount}`,
+      prepaidBadge: 'Prepaid',
+      customer: (name: string) => `Customer: ${name}`,
+      failureReason: (reason: string) => `Reason: ${reason}`,
+      noActiveTitle: 'No delivery in progress',
+      noActiveText: 'New deliveries assigned by the administrator will appear here.',
       liveDriverMarkerTitle: 'Your position',
       liveDriverMarkerDescription: 'Live GPS position',
     },
@@ -262,4 +302,9 @@ export const defaultLocale: Locale = 'fr';
 
 export function getStrings(locale: Locale): Strings {
   return localizedStrings[locale] ?? localizedStrings[defaultLocale];
+}
+
+/** Localized status label; unknown values from a newer backend are shown raw (contract 1). */
+export function getStatusLabel(status: string, strings: Strings) {
+  return (strings.status as Record<string, string>)[status] ?? status;
 }
