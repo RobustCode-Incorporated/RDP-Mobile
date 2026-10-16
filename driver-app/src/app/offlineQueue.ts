@@ -1,4 +1,4 @@
-import type { DriverDeliveryDto, PendingAction, PendingActionType } from '../types/api';
+import type { Delivery, PendingAction, PendingActionType } from '../types/api';
 
 const INITIAL_RETRY_DELAY_MS = 30_000;
 const MAX_RETRY_COUNT = 5;
@@ -86,22 +86,22 @@ export function discardBlockedActions(actions: PendingAction[]) {
 }
 
 export function patchDeliveryForOfflineAction(
-  delivery: DriverDeliveryDto,
+  delivery: Delivery,
   actionType: PendingActionType,
   payload?: PendingAction['payload']
 ) {
   const updatedAt = new Date().toISOString();
 
   if (actionType === 'PICKUP') {
-    return { ...delivery, status: 'PICKED_UP', updatedAt } satisfies DriverDeliveryDto;
+    return { ...delivery, status: 'PICKED_UP', updatedAt } satisfies Delivery;
   }
 
   if (actionType === 'START') {
-    return { ...delivery, status: 'IN_TRANSIT', updatedAt } satisfies DriverDeliveryDto;
+    return { ...delivery, status: 'IN_TRANSIT', updatedAt } satisfies Delivery;
   }
 
   if (actionType === 'COMPLETE') {
-    return { ...delivery, status: 'DELIVERED', updatedAt } satisfies DriverDeliveryDto;
+    return { ...delivery, status: 'DELIVERED', updatedAt } satisfies Delivery;
   }
 
   const description = payload?.reason
@@ -113,5 +113,5 @@ export function patchDeliveryForOfflineAction(
     status: 'CANCELLED',
     updatedAt,
     description,
-  } satisfies DriverDeliveryDto;
+  } satisfies Delivery;
 }

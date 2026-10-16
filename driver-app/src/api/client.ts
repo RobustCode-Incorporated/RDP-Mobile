@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import type { ApiError } from '../types/api';
 
 export const hostedBaseUrl = 'https://rdp-backend-xr8r.onrender.com';
 
@@ -80,24 +81,58 @@ api.interceptors.response.use(
   }
 );
 
-export function getApiErrorMessage(error: unknown) {
-  if (axios.isAxiosError(error)) {
-    const status = error.response?.status;
-    const responseData = error.response?.data as {
-      message?: string;
-      error?: string;
-      path?: string;
-    } | undefined;
+/**
+ * Extracts the contract error body `{ status, error, message, fieldErrors }` (contract 1.1)
+ * from an axios error. Returns null for network errors or non-contract bodies.
+ */
+export function parseApiError(error: unknown): ApiError | null {
+  if (!axios.isAxiosError(error) || !error.response) {
+    return null;
+  }
 
-    if (status === 403 && responseData?.path === '/api/auth/login') {
-      return 'Connexion refusee. Verifie email/mot de passe ou le role DRIVER.';
+  const data = error.response.data as Partial<ApiError> | string | undefined;
+
+  if (!data || typeof data !== 'object' || typeof data.message !== 'string') {
+    return null;
+  }
+
+  const fieldErrors = data.fieldErrors && typeof data.fieldErrors === 'object'
+    ? data.fieldErrors
+    : undefined;
+
+  return {
+    status: typeof data.status === 'number' ? data.status : error.response.status,
+    error: typeof data.error === 'string' ? data.error : '',
+    message: data.message,
+    timestamp: typeof data.timestamp === 'string' ? data.timestamp : '',
+    path: typeof data.path === 'string' ? data.path : (error.config?.url ?? ''),
+    ...(fieldErrors ? { fieldErrors } : {}),
+  };
+}
+
+/** HTTP status of a failed request, or null when no response was received. */
+export function getApiErrorStatus(error: unknown): number | null {
+  if (axios.isAxiosError(error)) {
+    return error.response?.status ?? null;
+  }
+
+  return null;
+}
+
+export function getApiErrorMessage(error: unknown) {
+  const apiError = parseApiError(error);
+
+  if (apiError) {
+    const fieldMessages = apiError.fieldErrors ? Object.values(apiError.fieldErrors) : [];
+    return fieldMessages.length > 0 ? fieldMessages.join(' ') : apiError.message;
+  }
+
+  if (axios.isAxiosError(error)) {
+    if (typeof error.response?.data === 'string' && error.response.data.trim()) {
+      return error.response.data;
     }
 
-    const responseMessage = typeof error.response?.data === 'string'
-      ? error.response.data
-      : responseData?.message ?? responseData?.error;
-
-    return responseMessage ?? error.message;
+    return error.message;
   }
 
   if (error instanceof Error) {
@@ -107,10 +142,24 @@ export function getApiErrorMessage(error: unknown) {
   return 'Une erreur inattendue est survenue.';
 }
 
+/** No response at all (offline, DNS, timeout). */
 export function isRecoverableNetworkError(error: unknown) {
   if (!axios.isAxiosError(error)) {
     return false;
   }
 
   return !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
+}
+
+/**
+ * Errors worth retrying with backoff (contract 9.2): network errors and 5xx
+ * (e.g. hosted backend cold start).
+ */
+export function isRetryableError(error: unknown) {
+  if (isRecoverableNetworkError(error)) {
+    return true;
+  }
+
+  const status = getApiErrorStatus(error);
+  return status !== null && status >= 500;
 }

@@ -4,8 +4,8 @@ import * as Location from 'expo-location';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { LocaleSwitcher } from '../components/LocaleSwitcher';
 import { useI18n } from '../i18n/I18nProvider';
-import type { DriverDeliveryDto, PendingAction } from '../types/api';
-import { palette, statusBadgeColors } from '../theme/palette';
+import type { Delivery, PendingAction } from '../types/api';
+import { getStatusBadgeColors, palette } from '../theme/palette';
 
 type Coordinates = {
   latitude: number;
@@ -20,7 +20,7 @@ type RouteSummary = {
 };
 
 interface DeliveryDetailScreenProps {
-  delivery: DriverDeliveryDto;
+  delivery: Delivery;
   currentLocation: Coordinates | null;
   pendingActionCount: number;
   blockedAction: PendingAction | null;
@@ -341,14 +341,14 @@ export function DeliveryDetailScreen({
         <Text style={styles.eyebrow}>{strings.detail.title}</Text>
         <View style={styles.headerRow}>
           <Text style={styles.title}>{strings.detail.deliveryTitle(delivery.id)}</Text>
-          <Text style={[styles.statusBadge, statusBadgeColors[delivery.status]]}>{delivery.status}</Text>
+          <Text style={[styles.statusBadge, getStatusBadgeColors(delivery.status)]}>{delivery.status}</Text>
         </View>
 
         <Text style={styles.metaLine}>{strings.detail.pickup(delivery.pickupAddress)}</Text>
         <Text style={styles.metaLine}>{strings.detail.destination(delivery.deliveryAddress)}</Text>
         {delivery.restaurant?.name ? <Text style={styles.metaLine}>{strings.detail.restaurant(delivery.restaurant.name)}</Text> : null}
         {delivery.restaurant?.address ? <Text style={styles.metaLine}>{strings.detail.restaurantAddress(delivery.restaurant.address)}</Text> : null}
-        {delivery.customer?.email ? <Text style={styles.metaLine}>{strings.detail.customer(delivery.customer.email)}</Text> : null}
+        {delivery.customerName ? <Text style={styles.metaLine}>{strings.detail.customer(delivery.customerName)}</Text> : null}
         {delivery.description ? <Text style={styles.metaLine}>{strings.detail.notes(delivery.description)}</Text> : null}
         <Text style={styles.metaLine}>{strings.detail.createdAt(delivery.createdAt)}</Text>
         {delivery.updatedAt ? <Text style={styles.metaLine}>{strings.detail.updatedAt(delivery.updatedAt)}</Text> : null}

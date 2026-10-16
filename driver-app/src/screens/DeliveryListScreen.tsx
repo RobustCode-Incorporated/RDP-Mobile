@@ -3,8 +3,8 @@ import MapView, { Marker } from 'react-native-maps';
 import { getSyncStatus } from '../app/syncStatus';
 import { LocaleSwitcher } from '../components/LocaleSwitcher';
 import { useI18n } from '../i18n/I18nProvider';
-import type { DriverDeliveryDto, PendingAction, StoredSession } from '../types/api';
-import { palette, statusBadgeColors } from '../theme/palette';
+import type { Delivery, PendingAction, StoredSession } from '../types/api';
+import { getStatusBadgeColors, palette } from '../theme/palette';
 
 type DriverCoordinates = {
   latitude: number;
@@ -14,7 +14,7 @@ type DriverCoordinates = {
 interface DeliveryListScreenProps {
   session: StoredSession;
   currentLocation: DriverCoordinates | null;
-  deliveries: DriverDeliveryDto[];
+  deliveries: Delivery[];
   pendingActionCountByDelivery: Record<number, number>;
   blockedActionByDelivery: Record<number, PendingAction>;
   blockedActionCount: number;
@@ -152,7 +152,7 @@ export function DeliveryListScreen({
         >
           <View style={styles.deliveryHeader}>
             <Text style={styles.deliveryTitle}>{strings.list.deliveryTitle(delivery.id)}</Text>
-            <Text style={[styles.statusBadge, statusBadgeColors[delivery.status]]}>{delivery.status}</Text>
+            <Text style={[styles.statusBadge, getStatusBadgeColors(delivery.status)]}>{delivery.status}</Text>
           </View>
           <Text style={styles.deliveryMeta}>{strings.list.pickup(delivery.pickupAddress)}</Text>
           <Text style={styles.deliveryMeta}>{strings.list.destination(delivery.deliveryAddress)}</Text>

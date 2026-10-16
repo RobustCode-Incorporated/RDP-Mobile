@@ -6,7 +6,8 @@ import { triggerUnauthorizedHandlerForTests } from '../api/client';
 import { fetchMyDeliveries, startDelivery } from '../api/driver';
 import { clearDeliveryCache, clearPendingActions, clearSession, loadDeliveryCache, loadPendingActions, loadSession, savePendingActions } from '../lib/session';
 import { useDriverApp } from './useDriverApp';
-import type { DriverDeliveryDto, PendingAction, StoredSession } from '../types/api';
+import { buildDelivery } from '../test/fixtures';
+import type { Delivery, PendingAction, StoredSession } from '../types/api';
 
 jest.mock('../api/auth', () => ({
   login: jest.fn(),
@@ -48,15 +49,11 @@ const baseSession: StoredSession = {
   role: 'DRIVER',
 };
 
-const pickedUpDelivery: DriverDeliveryDto = {
+const pickedUpDelivery: Delivery = buildDelivery({
   id: 1,
-  pickupAddress: '18 Quai des Saveurs, Paris',
-  deliveryAddress: 'QA MOBILE - 12 Rue des Fleurs, Paris',
-  description: 'QA sample',
   status: 'PICKED_UP',
-  createdAt: '2026-07-15T08:00:00.000Z',
   updatedAt: '2026-07-15T08:30:00.000Z',
-};
+});
 
 function DriverAppHarness() {
   const app = useDriverApp();

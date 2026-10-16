@@ -29,7 +29,7 @@ import {
 } from '../lib/session';
 import { useI18n } from '../i18n/I18nProvider';
 import { trackDriverEvent } from '../lib/telemetry';
-import type { DriverDeliveryDto, PendingAction, PendingActionType, StoredSession } from '../types/api';
+import type { Delivery, PendingAction, PendingActionType, StoredSession } from '../types/api';
 import {
   buildPendingActionCountByDelivery,
   createPendingAction,
@@ -57,7 +57,7 @@ export function useDriverApp() {
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<number | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [deliveries, setDeliveries] = useState<DriverDeliveryDto[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [failureDrafts, setFailureDrafts] = useState<Record<number, string>>({});
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [lastSuccessfulSync, setLastSuccessfulSync] = useState<string | null>(null);
@@ -367,13 +367,13 @@ export function useDriverApp() {
     setScreen('list');
   };
 
-  const updateDelivery = (updatedDelivery: DriverDeliveryDto) => {
+  const updateDelivery = (updatedDelivery: Delivery) => {
     setDeliveries((currentDeliveries) => currentDeliveries.map((delivery) => (
       delivery.id === updatedDelivery.id ? updatedDelivery : delivery
     )));
   };
 
-  const patchLocalDelivery = (deliveryId: number, patch: Partial<DriverDeliveryDto>) => {
+  const patchLocalDelivery = (deliveryId: number, patch: Partial<Delivery>) => {
     setDeliveries((currentDeliveries) => currentDeliveries.map((delivery) => (
       delivery.id === deliveryId
         ? {
@@ -403,7 +403,7 @@ export function useDriverApp() {
       }
 
       try {
-        let updatedDelivery: DriverDeliveryDto;
+        let updatedDelivery: Delivery;
 
         if (action.actionType === 'PICKUP') {
           updatedDelivery = await pickupDelivery(action.deliveryId);
@@ -523,9 +523,9 @@ export function useDriverApp() {
   const runDeliveryAction = async (
     deliveryId: number,
     actionType: PendingActionType,
-    action: () => Promise<DriverDeliveryDto>,
+    action: () => Promise<Delivery>,
     successMessage: string,
-    offlineStatus: DriverDeliveryDto['status'],
+    offlineStatus: Delivery['status'],
     payload?: PendingAction['payload']
   ) => {
     setSavingDeliveryId(deliveryId);

@@ -10,7 +10,8 @@ import {
   resetPendingActionForManualRetry,
   shouldReplayPendingAction,
 } from './offlineQueue';
-import type { DriverDeliveryDto, PendingAction } from '../types/api';
+import type { PendingAction } from '../types/api';
+import { buildDelivery } from '../test/fixtures';
 
 describe('offlineQueue helpers', () => {
   it('counts queued actions by delivery', () => {
@@ -83,15 +84,7 @@ describe('offlineQueue helpers', () => {
   });
 
   it('patches a delivery locally for offline fail actions', () => {
-    const delivery: DriverDeliveryDto = {
-      id: 9,
-      pickupAddress: 'A',
-      deliveryAddress: 'B',
-      description: 'Initiale',
-      status: 'IN_TRANSIT',
-      createdAt: '2026-07-15T10:00:00',
-      updatedAt: null,
-    };
+    const delivery = buildDelivery({ id: 9, description: 'Initiale', status: 'IN_TRANSIT' });
 
     const patched = patchDeliveryForOfflineAction(delivery, 'FAIL', { reason: 'Client absent' });
 

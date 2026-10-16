@@ -1,7 +1,8 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
 import { DeliveryDetailScreen } from './DeliveryDetailScreen';
-import type { DriverDeliveryDto, PendingAction } from '../types/api';
+import { buildDelivery } from '../test/fixtures';
+import type { Delivery, PendingAction } from '../types/api';
 
 jest.mock('expo-location', () => ({
   geocodeAsync: jest.fn(async () => []),
@@ -22,24 +23,7 @@ jest.mock('react-native-maps', () => {
   };
 });
 
-const delivery: DriverDeliveryDto = {
-  id: 42,
-  pickupAddress: '12 Rue du Depart',
-  deliveryAddress: '90 Avenue du Port',
-  description: 'Commande fragile',
-  status: 'ASSIGNED',
-  createdAt: '2026-07-15T10:00:00.000Z',
-  updatedAt: '2026-07-15T10:05:00.000Z',
-  restaurant: {
-    id: 7,
-    name: 'Harbor Bowl Kitchen',
-    address: '18 Quai des Saveurs',
-  },
-  customer: {
-    id: 9,
-    email: 'customer@test.com',
-  },
-};
+const delivery: Delivery = buildDelivery({ id: 42, status: 'ASSIGNED' });
 
 const blockedAction: PendingAction = {
   actionId: 'FAIL-42-1',
