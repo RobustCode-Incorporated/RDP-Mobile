@@ -55,6 +55,16 @@ export async function triggerUnauthorizedHandlerForTests() {
   }
 }
 
+export const LOGIN_PATH = '/api/auth/login';
+
+export function isLoginRequest(url: string | undefined) {
+  if (!url) {
+    return false;
+  }
+
+  return url.split('?')[0].endsWith(LOGIN_PATH);
+}
+
 export const api = axios.create({
   baseURL,
   headers: {
@@ -73,7 +83,14 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401 && unauthorizedHandler) {
+    // A 401 from the login call itself means bad credentials, not an expired session:
+    // the login screen shows it, the session-expired handler must not run.
+    if (
+      axios.isAxiosError(error)
+      && error.response?.status === 401
+      && !isLoginRequest(error.config?.url)
+      && unauthorizedHandler
+    ) {
       await unauthorizedHandler();
     }
 

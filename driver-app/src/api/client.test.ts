@@ -76,3 +76,37 @@ describe('contract error body parsing', () => {
     expect(isRetryableError(buildAxiosError(409, { message: 'x' }))).toBe(false);
   });
 });
+
+import { jest } from '@jest/globals';
+import { api, isLoginRequest, setUnauthorizedHandler } from './client';
+
+describe('unauthorized interceptor', () => {
+  const rejectWith401 = async (config: any) => {
+    throw new AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, {}, {
+      status: 401,
+      statusText: 'Unauthorized',
+      headers: {},
+      config,
+      data: { status: 401, error: 'Unauthorized', message: 'Invalid email or password', timestamp: 'x', path: config.url },
+    } as never);
+  };
+
+  it('does not trigger the session-expired handler for a 401 on the login call', async () => {
+    const handler = jest.fn(async () => {});
+    setUnauthorizedHandler(handler);
+
+    await expect(api.post('/api/auth/login', {}, { adapter: rejectWith401 })).rejects.toBeInstanceOf(AxiosError);
+    expect(handler).not.toHaveBeenCalled();
+
+    await expect(api.get('/api/deliveries/me', { adapter: rejectWith401 })).rejects.toBeInstanceOf(AxiosError);
+    expect(handler).toHaveBeenCalledTimes(1);
+    setUnauthorizedHandler(null);
+  });
+
+  it('recognises the login path with absolute URLs and query strings', () => {
+    expect(isLoginRequest('/api/auth/login')).toBe(true);
+    expect(isLoginRequest('https://x.test/api/auth/login?x=1')).toBe(true);
+    expect(isLoginRequest('/api/auth/register')).toBe(false);
+    expect(isLoginRequest(undefined)).toBe(false);
+  });
+});

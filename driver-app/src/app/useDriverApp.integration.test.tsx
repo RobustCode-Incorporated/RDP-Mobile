@@ -3,6 +3,7 @@ import { act, render, waitFor } from '@testing-library/react-native';
 import { describe, expect, it, jest, beforeEach } from '@jest/globals';
 import { Text, View } from 'react-native';
 import { triggerUnauthorizedHandlerForTests } from '../api/client';
+import { login } from '../api/auth';
 import { failDelivery, fetchDelivery, fetchMyDeliveries, startDelivery } from '../api/driver';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { clearDeliveryCache, clearPendingActions, clearSession, loadDeliveryCache, loadPendingActions, loadSession, saveDeliveryCache, savePendingActions } from '../lib/session';
@@ -45,6 +46,7 @@ const startDeliveryMock = startDelivery as jest.MockedFunction<typeof startDeliv
 const savePendingActionsMock = savePendingActions as jest.MockedFunction<typeof savePendingActions>;
 const clearSessionMock = clearSession as jest.MockedFunction<typeof clearSession>;
 const clearPendingActionsMock = clearPendingActions as jest.MockedFunction<typeof clearPendingActions>;
+const loginMock = login as jest.MockedFunction<typeof login>;
 const failDeliveryMock = failDelivery as jest.MockedFunction<typeof failDelivery>;
 const fetchDeliveryMock = fetchDelivery as jest.MockedFunction<typeof fetchDelivery>;
 const saveDeliveryCacheMock = saveDeliveryCache as jest.MockedFunction<typeof saveDeliveryCache>;
@@ -224,6 +226,40 @@ describe('useDriverApp integration coverage', () => {
       expect(fetchDeliveryMock).toHaveBeenCalledWith(1);
       expect(screen.getByText('pending:0')).toBeTruthy();
       expect(screen.getByText('statuses:FAILED')).toBeTruthy();
+    });
+  });
+
+  describe('login error messaging', () => {
+    const attemptLogin = async (error: unknown) => {
+      loadSessionMock.mockResolvedValue(null);
+      loginMock.mockRejectedValue(error);
+      const screen = await render(<DriverAppHarness />);
+      await waitFor(() => expect(screen.getByText('screen:login')).toBeTruthy());
+
+      await act(async () => {
+        latestApp!.setEmail('driver@test.com');
+        latestApp!.setPassword('secret123');
+      });
+      await act(async () => {
+        await latestApp!.handleLogin();
+      });
+
+      return screen;
+    };
+
+    it('shows the pending approval message on 403', async () => {
+      const screen = await attemptLogin(httpError(403, 'Account is disabled or pending administrator approval'));
+
+      expect(screen.getByText(/^error:Votre compte est en attente de validation/)).toBeTruthy();
+      expect(screen.getByText('session:none')).toBeTruthy();
+    });
+
+    it('shows a login error (not session expired) on 401 from the login call', async () => {
+      const screen = await attemptLogin(httpError(401, 'Invalid email or password'));
+
+      expect(screen.getByText('error:Email ou mot de passe incorrect.')).toBeTruthy();
+      expect(screen.queryByText('error:Votre session a expire. Veuillez vous reconnecter.')).toBeNull();
+      expect(clearSessionMock).not.toHaveBeenCalled();
     });
   });
 });

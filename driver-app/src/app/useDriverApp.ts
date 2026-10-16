@@ -69,6 +69,28 @@ function executePendingAction(action: PendingAction) {
   }
 }
 
+/** Maps login failures (contract 2.1) to user-facing messages. */
+export function getLoginErrorMessage(
+  error: unknown,
+  hookStrings: { loginInvalidCredentials: string; accountPendingApproval: string; loginNetworkError: string }
+) {
+  const status = getApiErrorStatus(error);
+
+  if (status === 401) {
+    return hookStrings.loginInvalidCredentials;
+  }
+
+  if (status === 403) {
+    return hookStrings.accountPendingApproval;
+  }
+
+  if (isRetryableError(error)) {
+    return hookStrings.loginNetworkError;
+  }
+
+  return getApiErrorMessage(error);
+}
+
 export function useDriverApp() {
   const { strings } = useI18n();
   const stringsRef = useRef(strings);
@@ -501,8 +523,9 @@ export function useDriverApp() {
       setSession(null);
       void trackDriverEvent('auth_login_failed', {
         reason: getApiErrorMessage(error),
+        status: getApiErrorStatus(error),
       });
-      setErrorMessage(getApiErrorMessage(error));
+      setErrorMessage(getLoginErrorMessage(error, strings.hook));
     } finally {
       setIsSubmitting(false);
     }
