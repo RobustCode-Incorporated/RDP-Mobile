@@ -10,6 +10,51 @@ When it is unset, development builds (`__DEV__`) target the local backend
 and release builds target the hosted Render backend. `EXPO_PUBLIC_*` values are
 bundled into the app, so never put secrets in them.
 
+## API contract
+
+The app follows `DeliveryPlatform/docs/api-contract-v2.md` (backend branch
+`session-2/unified-flow`): one `Delivery` entity, statuses
+`CREATED / ASSIGNED / PICKED_UP / IN_TRANSIT / DELIVERED / FAILED / CANCELLED`,
+`customerName` / `customerPhone`, `cashToCollect` for cash on delivery,
+`GET /api/deliveries/{id}/history`, `PATCH /api/drivers/me/location`.
+Error bodies `{ status, error, message, fieldErrors }` are parsed in `src/api/client.ts`.
+
+## Local storage
+
+- `expo-secure-store`: only the auth session (JWT, email, role) and the UI locale.
+- `@react-native-async-storage/async-storage` (installed with `npx expo install`):
+  delivery cache and offline action queue. SecureStore has a ~2KB per-value limit on
+  some platforms, so lists must never go there. Values written by older builds in
+  SecureStore are migrated once at startup (`migrateLegacyStorage` in `src/lib/session.ts`).
+
+## Offline queue
+
+`src/app/offlineQueue.ts` implements contract section 9.2: optimistic local
+transitions mirror the server state machine (a failure is `FAILED` + `failureReason`),
+`409` re-fetches the delivery and treats the action as done when the target status is
+already reached (otherwise the action is marked conflicted and the server copy shown),
+`403/404` drop the action, `401` keeps the queue for replay after re-login, network and
+`5xx` errors retry with bounded exponential backoff (5 attempts).
+
+## Live location
+
+Foreground only for the pilot: the app sends `PATCH /api/drivers/me/location` at most
+every 15 s (earlier on >=150 m movement, 30 s heartbeat when stationary) and only while a
+delivery is `ASSIGNED`, `PICKED_UP` or `IN_TRANSIT`. Tracking stops otherwise.
+
+**Session 3:** background location (expo-location background task + `expo-task-manager`,
+`locationAlwaysAndWhenInUsePermission`, Android foreground service, store review
+justification) is not implemented yet.
+
+## App identity / builds
+
+- Display name `RDP Livreur`, slug `driver-app`, bundle id / package `com.robustcode.rdpdriver`.
+- TODO (EAS, needs store accounts - not done): run `eas init` to create the EAS project
+  and add `extra.eas.projectId` + `owner` to `app.json`, add `eas.json` with
+  `development` / `preview` / `production` profiles (set `EXPO_PUBLIC_API_BASE_URL`
+  per profile), add app icons/splash for RDP, configure Apple Team / Google Play
+  service account credentials, then `eas build` and `eas submit`.
+
 ## Current status snapshot (already done)
 
 - Core driver workflow is implemented (auth, list, detail, transitions).
@@ -61,14 +106,10 @@ Definition of done:
 Definition of done:
 - End-to-end runbook executed and artifacts attached.
 
-## 5) Optional feature: order history enhancement
+## 5) Delivery history (done in session 2)
 
-- Implement optional order history view using:
-  - GET /api/orders/{id}/history
-- Add UI mapping and error/empty states.
-
-Definition of done:
-- Feature merged with tests and clear fallback UX when data is unavailable.
+- Delivery detail shows `GET /api/deliveries/{id}/history` as a timeline, with a
+  fallback built from lifecycle timestamps when the history cannot be loaded.
 
 ## 6) Telemetry production wiring
 
