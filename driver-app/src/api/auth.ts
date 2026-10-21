@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, LOGIN_PATH } from './client';
 import type { LoginResponse } from '../types/api';
 
 interface LoginRequest {
@@ -7,6 +7,6 @@ interface LoginRequest {
 }
 
 export async function login(request: LoginRequest) {
-  const { data } = await api.post<LoginResponse>('/api/auth/login', request);
+  const { data } = await api.post<LoginResponse>(LOGIN_PATH, request);
   return data;
 }

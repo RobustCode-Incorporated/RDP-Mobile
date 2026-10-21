@@ -6,6 +6,10 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn(),
 }));
 
+jest.mock('@react-native-async-storage/async-storage', () => (
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+));
+
 jest.mock('expo-location', () => ({
   Accuracy: {
     Balanced: 3,
@@ -25,3 +29,17 @@ jest.mock('expo-location', () => ({
   }),
   geocodeAsync: jest.fn(async () => []),
 }));
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MockMapView = (props: any) => React.createElement(View, { testID: 'mock-map-view' }, props.children);
+  const MockMarker = (props: any) => React.createElement(View, { testID: 'mock-map-marker' }, props.children);
+  const MockPolyline = (props: any) => React.createElement(View, { testID: 'mock-map-polyline' }, props.children);
+
+  return {
+    __esModule: true,
+    default: MockMapView,
+    Marker: MockMarker,
+    Polyline: MockPolyline,
+  };
+});

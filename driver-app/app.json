@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "driver-app",
+    "name": "RDP Livreur",
     "slug": "driver-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.driverapp"
+      "bundleIdentifier": "com.robustcode.rdpdriver"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.driverapp"
+      "package": "com.robustcode.rdpdriver"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -28,7 +28,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Autoriser l application chauffeur a partager votre localisation pendant la livraison."
+          "locationWhenInUsePermission": "RDP Livreur partage votre position avec le restaurant et l'administrateur uniquement pendant une livraison en cours."
         }
       ]
     ]

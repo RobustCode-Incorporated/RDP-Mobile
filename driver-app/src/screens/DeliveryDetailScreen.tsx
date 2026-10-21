@@ -1,30 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import * as Location from 'expo-location';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import { useState } from 'react';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { DeliveryBadges, StatusBadge } from '../components/DeliveryBadges';
+import { DeliveryMapCard } from '../components/DeliveryMapCard';
+import { FailureReasonPanel } from '../components/FailureReasonPanel';
+import { HistoryTimeline } from '../components/HistoryTimeline';
 import { LocaleSwitcher } from '../components/LocaleSwitcher';
 import { useI18n } from '../i18n/I18nProvider';
-import type { DriverDeliveryDto, PendingAction } from '../types/api';
-import { palette, statusBadgeColors } from '../theme/palette';
+import { formatEur } from '../lib/format';
+import { buildNavigationUrls, buildTelUrl, type NavigationTarget } from '../lib/navigation';
+import { palette } from '../theme/palette';
+import type { Delivery, DeliveryHistory, PendingAction } from '../types/api';
+import { isActiveDelivery } from '../types/api';
 
 type Coordinates = {
   latitude: number;
   longitude: number;
 };
 
-type RouteSummary = {
-  coordinates: Coordinates[];
-  distanceKm: number;
-  durationMinutes: number;
-  refreshedAt: string;
-};
-
 interface DeliveryDetailScreenProps {
-  delivery: DriverDeliveryDto;
+  delivery: Delivery;
   currentLocation: Coordinates | null;
   pendingActionCount: number;
   blockedAction: PendingAction | null;
-  failureDraft: string;
   bannerMessage: string | null;
   errorMessage: string | null;
   isSaving: boolean;
@@ -32,103 +29,18 @@ interface DeliveryDetailScreenProps {
   onRefreshServerState: () => void;
   onRetryBlockedAction: () => void;
   onDiscardBlockedAction: () => void;
-  onFailureDraftChange: (value: string) => void;
   onPickup: () => void;
   onStart: () => void;
   onComplete: () => void;
-  onFail: () => void;
+  /** Resolves to true when the reason was accepted. */
+  onFail: (reason: string) => void | Promise<boolean | void>;
+  loadHistory: (deliveryId: number) => Promise<DeliveryHistory[]>;
 }
 
-const LAT_LNG_PATTERN = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/;
-
-function parseCoordinatesFromAddress(address: string): Coordinates | null {
-  const match = LAT_LNG_PATTERN.exec(address);
-
-  if (!match) {
-    return null;
+function openUrl(url: string | null) {
+  if (url) {
+    void Linking.openURL(url).catch(() => undefined);
   }
-
-  const latitude = Number(match[1]);
-  const longitude = Number(match[2]);
-
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-    return null;
-  }
-
-  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-    return null;
-  }
-
-  return { latitude, longitude };
-}
-
-function haversineDistanceKm(start: Coordinates, end: Coordinates) {
-  const earthRadiusKm = 6371;
-  const toRadians = (value: number) => value * (Math.PI / 180);
-  const deltaLatitude = toRadians(end.latitude - start.latitude);
-  const deltaLongitude = toRadians(end.longitude - start.longitude);
-
-  const a =
-    Math.sin(deltaLatitude / 2) * Math.sin(deltaLatitude / 2)
-    + Math.cos(toRadians(start.latitude))
-    * Math.cos(toRadians(end.latitude))
-    * Math.sin(deltaLongitude / 2)
-    * Math.sin(deltaLongitude / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return earthRadiusKm * c;
-}
-
-function buildExternalDirectionsUrl(origin: Coordinates | null, destination: Coordinates) {
-  const destinationQuery = `${destination.latitude},${destination.longitude}`;
-
-  if (!origin) {
-    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
-  }
-
-  const originQuery = `${origin.latitude},${origin.longitude}`;
-  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originQuery)}&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
-}
-
-async function fetchDrivingRoute(origin: Coordinates, destination: Coordinates): Promise<RouteSummary | null> {
-  const url = [
-    'https://router.project-osrm.org/route/v1/driving/',
-    `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`,
-    '?overview=full&geometries=geojson',
-  ].join('');
-
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error('Impossible de recuperer un itineraire live.');
-  }
-
-  const payload = await response.json() as {
-    routes?: Array<{
-      distance: number;
-      duration: number;
-      geometry?: {
-        coordinates?: number[][];
-      };
-    }>;
-  };
-
-  const firstRoute = payload.routes?.[0];
-
-  if (!firstRoute) {
-    return null;
-  }
-
-  const coordinates = (firstRoute.geometry?.coordinates ?? [])
-    .filter((point) => point.length >= 2)
-    .map((point) => ({ latitude: point[1], longitude: point[0] }));
-
-  return {
-    coordinates,
-    distanceKm: firstRoute.distance / 1000,
-    durationMinutes: Math.max(1, Math.round(firstRoute.duration / 60)),
-    refreshedAt: new Date().toISOString(),
-  };
 }
 
 export function DeliveryDetailScreen({
@@ -136,7 +48,6 @@ export function DeliveryDetailScreen({
   currentLocation,
   pendingActionCount,
   blockedAction,
-  failureDraft,
   bannerMessage,
   errorMessage,
   isSaving,
@@ -144,301 +55,158 @@ export function DeliveryDetailScreen({
   onRefreshServerState,
   onRetryBlockedAction,
   onDiscardBlockedAction,
-  onFailureDraftChange,
   onPickup,
   onStart,
   onComplete,
   onFail,
+  loadHistory,
 }: DeliveryDetailScreenProps) {
   const { strings } = useI18n();
-  const quickFailureReasons = strings.detail.quickFailureReasons;
-  const trimmedFailureDraft = failureDraft.trim();
-  const isFailureDraftInvalid = !trimmedFailureDraft || trimmedFailureDraft.length > 180;
+  const [isFailurePanelOpen, setIsFailurePanelOpen] = useState(false);
   const isBlockedByConflict = blockedAction?.state === 'conflicted';
   const isBlockedByFailure = blockedAction?.state === 'failed';
-  const [pickupCoordinates, setPickupCoordinates] = useState<Coordinates | null>(parseCoordinatesFromAddress(delivery.pickupAddress));
-  const [destinationCoordinates, setDestinationCoordinates] = useState<Coordinates | null>(parseCoordinatesFromAddress(delivery.deliveryAddress));
-  const [isGeocoding, setIsGeocoding] = useState(false);
-  const [routeSummary, setRouteSummary] = useState<RouteSummary | null>(null);
-  const [isRouting, setIsRouting] = useState(false);
-  const [routingError, setRoutingError] = useState<string | null>(null);
+  const isCashOnDelivery = delivery.paymentMode === 'CASH_ON_DELIVERY';
+  const cashLabel = formatEur(delivery.cashToCollect) || '-';
 
-  useEffect(() => {
-    let isMounted = true;
+  const openNavigationChooser = (target: NavigationTarget) => {
+    const urls = buildNavigationUrls(target);
+    // Android alerts support at most 3 buttons: Google Maps, Waze, Cancel.
+    const buttons = [
+      { text: strings.detail.googleMaps, onPress: () => openUrl(urls.google) },
+      { text: strings.detail.waze, onPress: () => openUrl(urls.waze) },
+      ...(Platform.OS === 'ios' ? [{ text: strings.detail.appleMaps, onPress: () => openUrl(urls.apple) }] : []),
+      { text: strings.detail.cancel, style: 'cancel' as const },
+    ];
 
-    const geocodeAddresses = async () => {
-      const parsedPickup = parseCoordinatesFromAddress(delivery.pickupAddress);
-      const parsedDestination = parseCoordinatesFromAddress(delivery.deliveryAddress);
+    Alert.alert(strings.detail.navigateChooserTitle, strings.detail.navigateChooserMessage, buttons);
+  };
 
-      if (isMounted) {
-        setPickupCoordinates(parsedPickup);
-        setDestinationCoordinates(parsedDestination);
-      }
-
-      if (parsedPickup && parsedDestination) {
-        return;
-      }
-
-      setIsGeocoding(true);
-
-      try {
-        if (!parsedPickup) {
-          const pickupResult = await Location.geocodeAsync(delivery.pickupAddress);
-
-          if (isMounted && pickupResult.length > 0) {
-            setPickupCoordinates({
-              latitude: pickupResult[0].latitude,
-              longitude: pickupResult[0].longitude,
-            });
-          }
-        }
-
-        if (!parsedDestination) {
-          const destinationResult = await Location.geocodeAsync(delivery.deliveryAddress);
-
-          if (isMounted && destinationResult.length > 0) {
-            setDestinationCoordinates({
-              latitude: destinationResult[0].latitude,
-              longitude: destinationResult[0].longitude,
-            });
-          }
-        }
-      } finally {
-        if (isMounted) {
-          setIsGeocoding(false);
-        }
-      }
-    };
-
-    void geocodeAddresses();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [delivery.pickupAddress, delivery.deliveryAddress]);
-
-  const activeTarget = useMemo(() => {
-    if (delivery.status === 'ASSIGNED' || delivery.status === 'PICKED_UP') {
-      return pickupCoordinates;
-    }
-
-    return destinationCoordinates;
-  }, [delivery.status, pickupCoordinates, destinationCoordinates]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (!currentLocation || !activeTarget) {
-      setRouteSummary(null);
-      setRoutingError(null);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    const syncRoute = async () => {
-      setIsRouting(true);
-
-      try {
-        const nextRoute = await fetchDrivingRoute(currentLocation, activeTarget);
-
-        if (isMounted) {
-          setRouteSummary(nextRoute);
-          setRoutingError(null);
-        }
-      } catch {
-        if (isMounted) {
-          setRoutingError(strings.detail.routingFallbackError);
-          setRouteSummary(null);
-        }
-      } finally {
-        if (isMounted) {
-          setIsRouting(false);
-        }
-      }
-    };
-
-    void syncRoute();
-    const interval = setInterval(() => {
-      void syncRoute();
-    }, 30000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [currentLocation, activeTarget]);
-
-  const mapRegion = useMemo(() => {
-    const points = [
-      currentLocation,
-      pickupCoordinates,
-      destinationCoordinates,
-      ...(routeSummary?.coordinates ?? []),
-    ].filter((point): point is Coordinates => Boolean(point));
-
-    if (points.length === 0) {
-      return null;
-    }
-
-    const latitudes = points.map((point) => point.latitude);
-    const longitudes = points.map((point) => point.longitude);
-    const minLatitude = Math.min(...latitudes);
-    const maxLatitude = Math.max(...latitudes);
-    const minLongitude = Math.min(...longitudes);
-    const maxLongitude = Math.max(...longitudes);
-
-    return {
-      latitude: (minLatitude + maxLatitude) / 2,
-      longitude: (minLongitude + maxLongitude) / 2,
-      latitudeDelta: Math.max(0.01, (maxLatitude - minLatitude) * 1.8),
-      longitudeDelta: Math.max(0.01, (maxLongitude - minLongitude) * 1.8),
-    };
-  }, [currentLocation, pickupCoordinates, destinationCoordinates, routeSummary]);
-
-  const distanceToTargetKm = useMemo(() => {
-    if (routeSummary) {
-      return routeSummary.distanceKm;
-    }
-
-    if (!currentLocation || !activeTarget) {
-      return null;
-    }
-
-    return haversineDistanceKm(currentLocation, activeTarget);
-  }, [currentLocation, activeTarget, routeSummary]);
-
-  const estimatedEtaMinutes = useMemo(() => {
-    if (routeSummary) {
-      return routeSummary.durationMinutes;
-    }
-
-    if (distanceToTargetKm === null) {
-      return null;
-    }
-
-    const assumedCitySpeedKmh = 35;
-    return Math.max(1, Math.round((distanceToTargetKm / assumedCitySpeedKmh) * 60));
-  }, [distanceToTargetKm, routeSummary]);
-
-  const openDirections = async (target: Coordinates | null) => {
-    if (!target) {
+  const handleCompletePress = () => {
+    if (!isCashOnDelivery) {
+      onComplete();
       return;
     }
 
-    const url = buildExternalDirectionsUrl(currentLocation, target);
-    await Linking.openURL(url);
+    Alert.alert(
+      strings.detail.cashConfirmTitle,
+      strings.detail.cashConfirmMessage(cashLabel),
+      [
+        { text: strings.detail.cancel, style: 'cancel' },
+        { text: strings.detail.cashConfirmAction, onPress: onComplete },
+      ],
+      { cancelable: true }
+    );
   };
 
+  const handleFailSubmit = async (reason: string) => {
+    const accepted = await onFail(reason);
+
+    if (accepted !== false) {
+      setIsFailurePanelOpen(false);
+    }
+  };
+
+  const restaurantTel = buildTelUrl(delivery.restaurant.phone);
+  const customerTel = buildTelUrl(delivery.customerPhone);
+
   return (
-    <ScrollView contentContainerStyle={styles.contentContainer}>
+    <ScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
       <LocaleSwitcher />
       <Pressable accessibilityRole="button" style={styles.backButton} onPress={onBack}>
         <Text style={styles.backButtonText}>{strings.detail.back}</Text>
       </Pressable>
 
-      <View style={styles.detailCard}>
+      {/* Header */}
+      <View style={styles.card}>
         <Text style={styles.eyebrow}>{strings.detail.title}</Text>
         <View style={styles.headerRow}>
           <Text style={styles.title}>{strings.detail.deliveryTitle(delivery.id)}</Text>
-          <Text style={[styles.statusBadge, statusBadgeColors[delivery.status]]}>{delivery.status}</Text>
+          <StatusBadge status={delivery.status} />
         </View>
-
-        <Text style={styles.metaLine}>{strings.detail.pickup(delivery.pickupAddress)}</Text>
-        <Text style={styles.metaLine}>{strings.detail.destination(delivery.deliveryAddress)}</Text>
-        {delivery.restaurant?.name ? <Text style={styles.metaLine}>{strings.detail.restaurant(delivery.restaurant.name)}</Text> : null}
-        {delivery.restaurant?.address ? <Text style={styles.metaLine}>{strings.detail.restaurantAddress(delivery.restaurant.address)}</Text> : null}
-        {delivery.customer?.email ? <Text style={styles.metaLine}>{strings.detail.customer(delivery.customer.email)}</Text> : null}
-        {delivery.description ? <Text style={styles.metaLine}>{strings.detail.notes(delivery.description)}</Text> : null}
-        <Text style={styles.metaLine}>{strings.detail.createdAt(delivery.createdAt)}</Text>
-        {delivery.updatedAt ? <Text style={styles.metaLine}>{strings.detail.updatedAt(delivery.updatedAt)}</Text> : null}
+        <DeliveryBadges delivery={delivery} />
+        {delivery.orderReference ? <Text style={styles.metaLine}>{strings.detail.orderReference(delivery.orderReference)}</Text> : null}
+        {delivery.description ? <Text style={styles.metaLine}>{strings.detail.orderDescription(delivery.description)}</Text> : null}
+        {delivery.status === 'FAILED' && delivery.failureReason ? (
+          <Text style={styles.dangerLine}>{strings.detail.failureReasonDisplay(delivery.failureReason)}</Text>
+        ) : null}
+        {delivery.status === 'CANCELLED' && delivery.cancellationReason ? (
+          <Text style={styles.dangerLine}>{strings.detail.cancellationReasonDisplay(delivery.cancellationReason)}</Text>
+        ) : null}
         {pendingActionCount ? <Text style={styles.pendingText}>{strings.detail.pendingActions(pendingActionCount)}</Text> : null}
       </View>
 
-      <View style={styles.mapCard}>
-        <Text style={styles.mapTitle}>{strings.detail.mapTitle}</Text>
-        {isGeocoding ? <Text style={styles.mapHint}>{strings.detail.geocoding}</Text> : null}
-        {!mapRegion ? <Text style={styles.mapHint}>{strings.detail.noMapCoordinates}</Text> : null}
-
-        {mapRegion ? (
-          <MapView style={styles.mapView} initialRegion={mapRegion} region={mapRegion}>
-            {currentLocation ? (
-              <Marker
-                coordinate={currentLocation}
-                  title={strings.detail.markerDriverTitle}
-                  description={strings.detail.markerDriverDescription}
-                pinColor="#2563EB"
-              />
-            ) : null}
-            {pickupCoordinates ? (
-              <Marker
-                coordinate={pickupCoordinates}
-                title={strings.detail.markerPickupTitle}
-                description={delivery.pickupAddress}
-                pinColor="#D97706"
-              />
-            ) : null}
-            {destinationCoordinates ? (
-              <Marker
-                coordinate={destinationCoordinates}
-                title={strings.detail.markerDestinationTitle}
-                description={delivery.deliveryAddress}
-                pinColor="#059669"
-              />
-            ) : null}
-            {pickupCoordinates && destinationCoordinates ? (
-              <Polyline
-                coordinates={[pickupCoordinates, destinationCoordinates]}
-                strokeColor="#111827"
-                strokeWidth={3}
-              />
-            ) : null}
-            {currentLocation && pickupCoordinates ? (
-              <Polyline
-                coordinates={[currentLocation, pickupCoordinates]}
-                strokeColor="#2563EB"
-                strokeWidth={2}
-              />
-            ) : null}
-            {routeSummary && routeSummary.coordinates.length > 1 ? (
-              <Polyline
-                coordinates={routeSummary.coordinates}
-                strokeColor="#7C3AED"
-                strokeWidth={4}
-              />
-            ) : null}
-          </MapView>
-        ) : null}
-
-        {isRouting ? <Text style={styles.mapHint}>{strings.detail.routingLoading}</Text> : null}
-        {routingError ? <Text style={styles.errorText}>{routingError}</Text> : null}
-
-        {distanceToTargetKm !== null ? (
-          <Text style={styles.mapMetric}>
-            {strings.detail.distanceLabel(Boolean(routeSummary), distanceToTargetKm, estimatedEtaMinutes)}
-          </Text>
+      {/* Payment */}
+      <View testID="payment-block" style={[styles.card, isCashOnDelivery && styles.cashCard]}>
+        <Text style={styles.blockTitle}>{strings.detail.paymentBlockTitle}</Text>
+        {isCashOnDelivery ? (
+          <>
+            <Text style={styles.cashMode}>{strings.detail.cashOnDelivery}</Text>
+            <Text testID="cash-to-collect" style={styles.cashAmount}>{strings.detail.cashToCollect(cashLabel)}</Text>
+          </>
         ) : (
-          <Text style={styles.mapHint}>{strings.detail.etaUnavailable}</Text>
+          <Text style={styles.metaLine}>{strings.detail.prepaid}</Text>
         )}
+        {delivery.orderAmount !== null ? <Text style={styles.metaLine}>{strings.detail.orderAmount(formatEur(delivery.orderAmount))}</Text> : null}
+        {delivery.deliveryFee !== null ? <Text style={styles.metaLine}>{strings.detail.deliveryFee(formatEur(delivery.deliveryFee))}</Text> : null}
+      </View>
 
-        {routeSummary?.refreshedAt ? (
-          <Text style={styles.mapHint}>{strings.detail.lastEtaRefresh(new Date(routeSummary.refreshedAt).toLocaleTimeString())}</Text>
-        ) : null}
-
-        <View style={styles.mapActions}>
+      {/* Restaurant */}
+      <View testID="restaurant-block" style={styles.card}>
+        <Text style={styles.blockTitle}>{strings.detail.restaurantBlockTitle}</Text>
+        <Text style={styles.blockName}>{delivery.restaurant.name}</Text>
+        <Text style={styles.metaLine}>{delivery.pickupAddress}</Text>
+        <View style={styles.buttonRow}>
           <Pressable
-            style={[styles.ghostButton, !pickupCoordinates && styles.buttonDisabled]}
-            disabled={!pickupCoordinates}
-            onPress={() => void openDirections(pickupCoordinates)}
+            testID="call-restaurant"
+            accessibilityRole="button"
+            style={[styles.ghostButton, !restaurantTel && styles.buttonDisabled]}
+            disabled={!restaurantTel}
+            onPress={() => openUrl(restaurantTel)}
           >
-            <Text style={styles.ghostButtonText}>{strings.detail.routeToPickup}</Text>
+            <Text style={styles.ghostButtonText}>{restaurantTel ? strings.detail.call : strings.detail.noPhone}</Text>
           </Pressable>
           <Pressable
-            style={[styles.ghostButton, !destinationCoordinates && styles.buttonDisabled]}
-            disabled={!destinationCoordinates}
-            onPress={() => void openDirections(destinationCoordinates)}
+            testID="navigate-restaurant"
+            accessibilityRole="button"
+            style={styles.ghostButton}
+            onPress={() => openNavigationChooser({
+              latitude: delivery.pickupLatitude,
+              longitude: delivery.pickupLongitude,
+              address: delivery.pickupAddress,
+            })}
           >
-            <Text style={styles.ghostButtonText}>{strings.detail.routeToDestination}</Text>
+            <Text style={styles.ghostButtonText}>{strings.detail.navigate}</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Customer */}
+      <View testID="customer-block" style={styles.card}>
+        <Text style={styles.blockTitle}>{strings.detail.customerBlockTitle}</Text>
+        {delivery.customerName ? <Text style={styles.blockName}>{delivery.customerName}</Text> : null}
+        <Text style={styles.metaLine}>{delivery.deliveryAddress}</Text>
+        {delivery.notes ? <Text style={styles.notes}>{strings.detail.customerNotes(delivery.notes)}</Text> : null}
+        <View style={styles.buttonRow}>
+          <Pressable
+            testID="call-customer"
+            accessibilityRole="button"
+            style={[styles.ghostButton, !customerTel && styles.buttonDisabled]}
+            disabled={!customerTel}
+            onPress={() => openUrl(customerTel)}
+          >
+            <Text style={styles.ghostButtonText}>{customerTel ? strings.detail.call : strings.detail.noPhone}</Text>
+          </Pressable>
+          <Pressable
+            testID="navigate-customer"
+            accessibilityRole="button"
+            style={styles.ghostButton}
+            onPress={() => openNavigationChooser({
+              latitude: delivery.deliveryLatitude,
+              longitude: delivery.deliveryLongitude,
+              address: delivery.deliveryAddress,
+            })}
+          >
+            <Text style={styles.ghostButtonText}>{strings.detail.navigate}</Text>
           </Pressable>
         </View>
       </View>
@@ -452,9 +220,7 @@ export function DeliveryDetailScreen({
             {isBlockedByConflict ? strings.detail.recoveryConflictTitle : strings.detail.recoveryFailedTitle}
           </Text>
           <Text style={styles.recoveryPanelText}>
-            {isBlockedByConflict
-              ? strings.detail.recoveryConflictText
-              : strings.detail.recoveryFailedText}
+            {isBlockedByConflict ? strings.detail.recoveryConflictText : strings.detail.recoveryFailedText}
           </Text>
           {blockedAction.lastError ? <Text style={styles.recoveryError}>{strings.detail.recoveryLastError(blockedAction.lastError)}</Text> : null}
 
@@ -474,62 +240,56 @@ export function DeliveryDetailScreen({
         </View>
       ) : null}
 
+      {/* Actions */}
       <View style={styles.actionGroup}>
         {delivery.status === 'ASSIGNED' ? (
-          <Pressable style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onPickup}>
+          <Pressable testID="pickup-button" style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onPickup}>
             <Text style={styles.primaryButtonText}>{strings.detail.markPickedUp}</Text>
           </Pressable>
         ) : null}
 
         {delivery.status === 'PICKED_UP' ? (
-          <Pressable style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onStart}>
+          <Pressable testID="start-button" style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onStart}>
             <Text style={styles.primaryButtonText}>{strings.detail.startDelivery}</Text>
           </Pressable>
         ) : null}
 
         {delivery.status === 'IN_TRANSIT' ? (
-          <Pressable style={[styles.primaryButton, isSaving && styles.buttonDisabled]} disabled={isSaving} onPress={onComplete}>
-            <Text style={styles.primaryButtonText}>{strings.detail.markDelivered}</Text>
+          <Pressable
+            testID="complete-button"
+            style={[styles.primaryButton, isSaving && styles.buttonDisabled]}
+            disabled={isSaving}
+            onPress={handleCompletePress}
+          >
+            <Text style={styles.primaryButtonText}>
+              {isCashOnDelivery ? `${strings.detail.markDelivered} · ${cashLabel}` : strings.detail.markDelivered}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {isActiveDelivery(delivery) && !isFailurePanelOpen ? (
+          <Pressable
+            testID="fail-delivery-button"
+            style={[styles.dangerOutlineButton, isSaving && styles.buttonDisabled]}
+            disabled={isSaving}
+            onPress={() => setIsFailurePanelOpen(true)}
+          >
+            <Text style={styles.dangerOutlineText}>{strings.detail.reportFailure}</Text>
           </Pressable>
         ) : null}
       </View>
 
-      {(delivery.status === 'ASSIGNED' || delivery.status === 'PICKED_UP' || delivery.status === 'IN_TRANSIT') ? (
-        <View style={styles.failurePanel}>
-          <Text style={styles.failureLabel}>{strings.detail.failureReason}</Text>
-          <View style={styles.quickReasonRow}>
-            {quickFailureReasons.map((reason) => (
-              <Pressable
-                key={reason}
-                accessibilityRole="button"
-                style={styles.quickReasonChip}
-                onPress={() => onFailureDraftChange(reason)}
-              >
-                <Text style={styles.quickReasonChipText}>{reason}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <TextInput
-            multiline
-            placeholder={strings.detail.failurePlaceholder}
-            placeholderTextColor="#64748b"
-            style={styles.textArea}
-            value={failureDraft}
-            onChangeText={onFailureDraftChange}
-          />
-          <Text style={[styles.counterText, trimmedFailureDraft.length > 180 && styles.counterTextError]}>
-            {strings.detail.failureCounter(trimmedFailureDraft.length)}
-          </Text>
-          <Pressable
-            testID="fail-delivery-button"
-            style={[styles.secondaryButton, (isSaving || isFailureDraftInvalid) && styles.buttonDisabled]}
-            disabled={isSaving || isFailureDraftInvalid}
-            onPress={onFail}
-          >
-            <Text style={styles.secondaryButtonText}>{strings.detail.submitFailure}</Text>
-          </Pressable>
-        </View>
+      {isActiveDelivery(delivery) && isFailurePanelOpen ? (
+        <FailureReasonPanel
+          isSaving={isSaving}
+          onSubmit={(reason) => void handleFailSubmit(reason)}
+          onCancel={() => setIsFailurePanelOpen(false)}
+        />
       ) : null}
+
+      <DeliveryMapCard delivery={delivery} currentLocation={currentLocation} />
+
+      <HistoryTimeline delivery={delivery} loadHistory={loadHistory} />
     </ScrollView>
   );
 }
@@ -548,11 +308,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  detailCard: {
-    borderRadius: 24,
+  card: {
+    borderRadius: 22,
     backgroundColor: palette.card,
-    padding: 20,
-    gap: 10,
+    padding: 18,
+    gap: 8,
+  },
+  cashCard: {
+    borderWidth: 2,
+    borderColor: palette.warningText,
+    backgroundColor: palette.warningBg,
   },
   eyebrow: {
     fontSize: 12,
@@ -572,54 +337,54 @@ const styles = StyleSheet.create({
     color: palette.textStrong,
     flex: 1,
   },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  blockTitle: {
     fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: palette.textMuted,
     fontWeight: '700',
-    overflow: 'hidden',
+  },
+  blockName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: palette.textStrong,
   },
   metaLine: {
     fontSize: 14,
     color: palette.textSubtle,
     lineHeight: 20,
   },
+  notes: {
+    fontSize: 14,
+    color: palette.textStrong,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  dangerLine: {
+    fontSize: 14,
+    color: palette.dangerText,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  cashMode: {
+    fontSize: 14,
+    color: palette.warningText,
+    fontWeight: '700',
+  },
+  cashAmount: {
+    fontSize: 24,
+    color: palette.warningText,
+    fontWeight: '800',
+  },
   pendingText: {
     fontSize: 13,
     color: palette.warningText,
     fontWeight: '600',
   },
-  mapCard: {
-    borderRadius: 22,
-    backgroundColor: palette.card,
-    padding: 14,
+  buttonRow: {
+    flexDirection: 'row',
     gap: 10,
-  },
-  mapTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: palette.textStrong,
-  },
-  mapHint: {
-    color: palette.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  mapMetric: {
-    color: palette.textSubtle,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '600',
-  },
-  mapView: {
-    width: '100%',
-    height: 220,
-    borderRadius: 14,
-  },
-  mapActions: {
-    gap: 8,
+    marginTop: 4,
   },
   successText: {
     color: palette.successText,
@@ -639,13 +404,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 16,
     backgroundColor: palette.primary,
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 18,
   },
   primaryButtonText: {
     color: palette.primaryText,
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 16,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -661,60 +426,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   ghostButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: palette.borderSoft,
+    backgroundColor: palette.card,
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
   ghostButtonText: {
-    color: palette.textSubtle,
+    color: palette.textStrong,
     fontWeight: '600',
     fontSize: 14,
   },
-  textArea: {
-    minHeight: 88,
-    textAlignVertical: 'top',
+  dangerOutlineButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: palette.borderSoft,
-    backgroundColor: palette.card,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: palette.textStrong,
+    borderColor: palette.dangerText,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
   },
-  quickReasonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  quickReasonChip: {
-    borderRadius: 999,
-    backgroundColor: palette.secondary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  quickReasonChipText: {
-    color: palette.secondaryText,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  counterText: {
-    color: palette.textMuted,
-    fontSize: 12,
-    textAlign: 'right',
-  },
-  counterTextError: {
+  dangerOutlineText: {
     color: palette.dangerText,
     fontWeight: '700',
-  },
-  failurePanel: {
-    gap: 10,
-    borderRadius: 22,
-    backgroundColor: palette.card,
-    padding: 18,
+    fontSize: 15,
   },
   recoveryPanel: {
     borderRadius: 22,
@@ -744,11 +483,6 @@ const styles = StyleSheet.create({
   },
   recoveryActions: {
     gap: 10,
-  },
-  failureLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: palette.textStrong,
   },
   buttonDisabled: {
     opacity: 0.6,

@@ -10,6 +10,7 @@ web-build/
 expo-env.d.ts
 
 # Native
+build/
 .kotlin/
 *.orig.*
 *.jks
@@ -30,9 +31,17 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files (keep the template)
 .env
-.env*.local
+.env.*
+!.env.example
+
+# logs, coverage, IDE
+*.log
+logs/
+coverage/
+.idea/
+.vscode/
 
 # typescript
 *.tsbuildinfo

@@ -1,10 +1,13 @@
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { getSyncStatus } from '../app/syncStatus';
 import { LocaleSwitcher } from '../components/LocaleSwitcher';
 import { useI18n } from '../i18n/I18nProvider';
-import type { DriverDeliveryDto, PendingAction, StoredSession } from '../types/api';
-import { palette, statusBadgeColors } from '../theme/palette';
+import type { Delivery, PendingAction, StoredSession } from '../types/api';
+import { groupDeliveriesForList } from '../app/deliveryGrouping';
+import { DeliveryBadges, StatusBadge } from '../components/DeliveryBadges';
+import { palette } from '../theme/palette';
 
 type DriverCoordinates = {
   latitude: number;
@@ -14,7 +17,7 @@ type DriverCoordinates = {
 interface DeliveryListScreenProps {
   session: StoredSession;
   currentLocation: DriverCoordinates | null;
-  deliveries: DriverDeliveryDto[];
+  deliveries: Delivery[];
   pendingActionCountByDelivery: Record<number, number>;
   blockedActionByDelivery: Record<number, PendingAction>;
   blockedActionCount: number;
@@ -50,6 +53,49 @@ export function DeliveryListScreen({
   const syncStatus = getSyncStatus(lastSuccessfulSync, Date.now(), strings.sync);
   const conflictedCount = Object.values(blockedActionByDelivery).filter((action) => action.state === 'conflicted').length;
   const failedCount = Object.values(blockedActionByDelivery).filter((action) => action.state === 'failed').length;
+  const [showFinished, setShowFinished] = useState(false);
+  const grouped = useMemo(() => groupDeliveriesForList(deliveries), [deliveries]);
+
+  const renderDeliveryCard = (delivery: Delivery) => {
+    const blockedAction = blockedActionByDelivery[delivery.id];
+    const pendingCount = pendingActionCountByDelivery[delivery.id];
+
+    return (
+      <Pressable
+        key={delivery.id}
+        testID={`delivery-card-${delivery.id}`}
+        accessibilityRole="button"
+        style={styles.deliveryCard}
+        onPress={() => onOpenDelivery(delivery.id)}
+      >
+        <View style={styles.deliveryHeader}>
+          <Text style={styles.deliveryTitle}>
+            {strings.list.deliveryTitle(delivery.id)}
+            {delivery.orderReference ? ` · ${delivery.orderReference}` : ''}
+          </Text>
+          <StatusBadge status={delivery.status} />
+        </View>
+        <DeliveryBadges delivery={delivery} />
+        <Text style={styles.restaurantName}>{delivery.restaurant.name}</Text>
+        {delivery.customerName ? <Text style={styles.deliveryMeta}>{strings.list.customer(delivery.customerName)}</Text> : null}
+        <Text style={styles.deliveryMeta}>{delivery.deliveryAddress}</Text>
+        {delivery.status === 'FAILED' && delivery.failureReason ? (
+          <Text style={styles.deliveryMeta}>{strings.list.failureReason(delivery.failureReason)}</Text>
+        ) : null}
+        {pendingCount ? <Text style={styles.pendingText}>{strings.list.pendingAction(pendingCount)}</Text> : null}
+        {blockedAction ? (
+          <View style={[styles.recoveryCard, blockedAction.state === 'conflicted' ? styles.conflictCard : styles.failedCard]}>
+            <Text style={styles.recoveryTitle}>
+              {blockedAction.state === 'conflicted' ? strings.list.conflictDetected : strings.list.recoveryRequired}
+            </Text>
+            <Text style={styles.recoveryText}>
+              {blockedAction.state === 'conflicted' ? strings.list.conflictText : strings.list.failedReplayText}
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>
+    );
+  };
 
   return (
     <ScrollView
@@ -132,51 +178,32 @@ export function DeliveryListScreen({
         <ActivityIndicator size="large" color={palette.primary} />
       ) : null}
 
-      {deliveries.length === 0 && !isRefreshing ? (
+      <Text style={styles.sectionTitle}>{strings.list.activeTitle(grouped.active.length)}</Text>
+
+      {grouped.active.length === 0 && !isRefreshing ? (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>{strings.list.noDeliveriesTitle}</Text>
-          <Text style={styles.emptyText}>{strings.list.noDeliveriesText}</Text>
+          <Text style={styles.emptyTitle}>{strings.list.noActiveTitle}</Text>
+          <Text style={styles.emptyText}>{strings.list.noActiveText}</Text>
         </View>
       ) : null}
 
-      {deliveries.map((delivery) => (
-        (() => {
-          const blockedAction = blockedActionByDelivery[delivery.id];
+      {grouped.active.map(renderDeliveryCard)}
 
-          return (
-        <Pressable
-          key={delivery.id}
-          accessibilityRole="button"
-          style={styles.deliveryCard}
-          onPress={() => onOpenDelivery(delivery.id)}
-        >
-          <View style={styles.deliveryHeader}>
-            <Text style={styles.deliveryTitle}>{strings.list.deliveryTitle(delivery.id)}</Text>
-            <Text style={[styles.statusBadge, statusBadgeColors[delivery.status]]}>{delivery.status}</Text>
-          </View>
-          <Text style={styles.deliveryMeta}>{strings.list.pickup(delivery.pickupAddress)}</Text>
-          <Text style={styles.deliveryMeta}>{strings.list.destination(delivery.deliveryAddress)}</Text>
-          {delivery.restaurant?.name ? <Text style={styles.deliveryMeta}>{strings.list.restaurant(delivery.restaurant.name)}</Text> : null}
-          {pendingActionCountByDelivery[delivery.id] ? (
-            <Text style={styles.pendingText}>{strings.list.pendingAction(pendingActionCountByDelivery[delivery.id])}</Text>
-          ) : null}
-          {blockedAction ? (
-            <View style={[styles.recoveryCard, blockedAction.state === 'conflicted' ? styles.conflictCard : styles.failedCard]}>
-              <Text style={styles.recoveryTitle}>
-                {blockedAction.state === 'conflicted' ? strings.list.conflictDetected : strings.list.recoveryRequired}
-              </Text>
-              <Text style={styles.recoveryText}>
-                {blockedAction.state === 'conflicted'
-                  ? strings.list.conflictText
-                  : strings.list.failedReplayText}
-              </Text>
-            </View>
-          ) : null}
-          <Text style={styles.linkText}>{strings.list.openDetail}</Text>
-        </Pressable>
-          );
-        })()
-      ))}
+      {grouped.finishedToday.length > 0 ? (
+        <>
+          <Pressable
+            testID="toggle-finished-section"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showFinished }}
+            style={styles.sectionToggle}
+            onPress={() => setShowFinished((value) => !value)}
+          >
+            <Text style={styles.sectionTitle}>{strings.list.finishedTodayTitle(grouped.finishedToday.length)}</Text>
+            <Text style={styles.linkText}>{showFinished ? strings.list.hideSection : strings.list.showSection}</Text>
+          </Pressable>
+          {showFinished ? grouped.finishedToday.map(renderDeliveryCard) : null}
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -335,14 +362,21 @@ const styles = StyleSheet.create({
     color: palette.textStrong,
     flex: 1,
   },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    fontSize: 12,
+  restaurantName: {
+    fontSize: 15,
     fontWeight: '700',
-    overflow: 'hidden',
+    color: palette.textStrong,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: palette.textStrong,
+  },
+  sectionToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
   },
   deliveryMeta: {
     fontSize: 14,

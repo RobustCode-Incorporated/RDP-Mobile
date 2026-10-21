@@ -48,7 +48,6 @@ function AppContent() {
           currentLocation={app.currentLocation}
           pendingActionCount={app.pendingActionCountByDelivery[app.selectedDelivery.id] ?? 0}
           blockedAction={app.blockedActionByDelivery[app.selectedDelivery.id] ?? null}
-          failureDraft={app.failureDrafts[app.selectedDelivery.id] ?? ''}
           bannerMessage={app.bannerMessage}
           errorMessage={app.errorMessage}
           isSaving={app.savingDeliveryId === app.selectedDelivery.id}
@@ -56,11 +55,11 @@ function AppContent() {
           onRefreshServerState={() => void app.refreshDeliveries()}
           onRetryBlockedAction={() => void app.retryBlockedAction(app.blockedActionByDelivery[app.selectedDelivery!.id]?.actionId ?? '')}
           onDiscardBlockedAction={() => void app.discardBlockedAction(app.blockedActionByDelivery[app.selectedDelivery!.id]?.actionId ?? '')}
-          onFailureDraftChange={(value) => app.setFailureDraft(app.selectedDelivery!.id, value)}
           onPickup={() => void app.actionHandlers.pickup(app.selectedDelivery!.id)}
           onStart={() => void app.actionHandlers.start(app.selectedDelivery!.id)}
           onComplete={() => void app.actionHandlers.complete(app.selectedDelivery!.id)}
-          onFail={() => void app.handleFailDelivery(app.selectedDelivery!.id)}
+          onFail={(reason) => app.handleFailDelivery(app.selectedDelivery!.id, reason)}
+          loadHistory={app.loadDeliveryHistory}
         />
       ) : (
         <DeliveryListScreen
