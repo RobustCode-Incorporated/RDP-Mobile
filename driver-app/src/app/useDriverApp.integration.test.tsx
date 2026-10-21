@@ -123,7 +123,7 @@ describe('useDriverApp integration coverage', () => {
     await waitFor(() => {
       expect(screen.getByText('session:none')).toBeTruthy();
       expect(screen.getByText('screen:login')).toBeTruthy();
-      expect(screen.getByText('error:Votre session a expire. Veuillez vous reconnecter.')).toBeTruthy();
+      expect(screen.getByText('error:Votre session a expiré. Veuillez vous reconnecter.')).toBeTruthy();
     });
 
     expect(clearSessionMock).toHaveBeenCalled();
@@ -202,7 +202,7 @@ describe('useDriverApp integration coverage', () => {
 
     expect(accepted).toBe(false);
     expect(failDeliveryMock).not.toHaveBeenCalled();
-    expect(screen.getByText('error:Veuillez saisir une raison d echec avant l envoi.')).toBeTruthy();
+    expect(screen.getByText('error:Veuillez saisir une raison d’échec avant l’envoi.')).toBeTruthy();
   });
 
   it('replays a queued action that gets 409 as done when the server already reached the target status', async () => {
@@ -259,7 +259,7 @@ describe('useDriverApp integration coverage', () => {
       const screen = await attemptLogin(httpError(401, 'Invalid email or password'));
 
       expect(screen.getByText('error:Email ou mot de passe incorrect.')).toBeTruthy();
-      expect(screen.queryByText('error:Votre session a expire. Veuillez vous reconnecter.')).toBeNull();
+      expect(screen.queryByText('error:Votre session a expiré. Veuillez vous reconnecter.')).toBeNull();
       expect(clearSessionMock).not.toHaveBeenCalled();
     });
   });

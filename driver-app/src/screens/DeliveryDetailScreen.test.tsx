@@ -153,7 +153,7 @@ describe('DeliveryDetailScreen', () => {
       await fireEvent.press(screen.getByTestId('failure-preset-CUSTOMER_UNREACHABLE'));
       await fireEvent.changeText(screen.getByTestId('failure-details-input'), 'appelé 3x');
 
-      expect(screen.getByText('30/180 caracteres')).toBeTruthy();
+      expect(screen.getByText('30/180 caractères')).toBeTruthy();
       await fireEvent.press(screen.getByTestId('confirm-failure-button'));
       expect(handlers.onFail).toHaveBeenCalledWith('Client injoignable - appelé 3x');
     });
@@ -223,7 +223,7 @@ describe('DeliveryDetailScreen', () => {
     const { screen } = await renderDetail(buildDelivery({ id: 42 }), { blockedAction, onDiscardBlockedAction });
 
     expect(screen.getByText('Conflit entre file locale et serveur')).toBeTruthy();
-    await fireEvent.press(screen.getByText('Supprimer l action locale'));
+    await fireEvent.press(screen.getByText('Supprimer l’action locale'));
     expect(onDiscardBlockedAction).toHaveBeenCalled();
   });
 });

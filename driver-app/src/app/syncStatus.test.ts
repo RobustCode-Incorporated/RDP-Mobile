@@ -11,7 +11,7 @@ describe('getSyncStatus', () => {
     const now = new Date('2026-07-15T10:00:00.000Z').getTime();
 
     expect(getSyncStatus('2026-07-15T09:45:00.000Z', now)).toEqual({
-      label: 'Derniere synchro il y a 15 min.',
+      label: 'Dernière synchro il y a 15 min.',
       isStale: false,
     });
   });
@@ -20,7 +20,7 @@ describe('getSyncStatus', () => {
     const now = new Date('2026-07-15T10:00:00.000Z').getTime();
 
     expect(getSyncStatus('2026-07-14T09:00:00.000Z', now)).toEqual({
-      label: 'Cache hors delai: derniere synchro il y a 1 j.',
+      label: 'Cache périmé : dernière synchro il y a 1 j.',
       isStale: true,
     });
   });
